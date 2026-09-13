@@ -9,7 +9,7 @@ import { hud } from './hud.js';
 export class Game {
   constructor(scene, mats) {
     this.scene = scene; this.player = new Player();
-    this.robot = new Robot(mats); scene.add(this.robot.group);
+    this.robot = new Robot(mats); scene.add(this.robot.group, this.robot.trail);
     this.obstacles = new Obstacles(scene, mats);
     this.handlers = {}; this.ev = {}; this.mode = C.DIFFICULTY_DEFAULT;
     this.state = 'MENU'; this.prevState = 'MENU'; this.stateTime = 0;
@@ -92,7 +92,7 @@ export class Game {
     }
     if (this.state === 'CRASHED') { this.speed = Math.max(0, this.speed - 30 * dt); this.player.update(dt); this.obstacles.update(dt, this.speed, this.score, this.shields, this.ev, []); }
     const mode = this.state === 'PLAYING' ? (p.grounded ? (p.ducking ? 'duck' : 'run') : 'jump') : this.state === 'CRASHED' ? 'stumble' : this.state === 'COUNTDOWN' ? 'run' : 'idle';
-    this.robot.update(dt, { mode, y: p.y, vy: p.vy, speed: this.speed, ducking: p.ducking, hitFlash: this.hitFlash, airtime: p.airtime, grounded: p.grounded });
+    if (this.robot.update(dt, { mode, y: p.y, vy: p.vy, speed: this.speed, ducking: p.ducking, hitFlash: this.hitFlash, airtime: p.airtime, grounded: p.grounded })) this.emit('step', this.speed);
   }
   stats() { return { score: this.score, time: this.time, cleared: this.cleared, mode: this.mode }; }
 }

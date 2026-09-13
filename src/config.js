@@ -37,6 +37,7 @@ export const CONFIG = {
   DESPAWN_X: -14,        // u behind the robot where obstacles are recycled.
   REACTION_TIME: 0.45,   // s a child needs to see an obstacle before it can hit them (asserted).
   ROBOT_X: 0,            // Robot's fixed world x.
+  ROBOT_TURN: 0.45,      // rad the robot is turned toward the camera (0 = pure side view, for the 3/4 look).
   POOL_PER_TYPE: 6,      // Pre-allocated meshes per obstacle type.
   WHEEL_SPEED_BONUS: 1.25,      // Rolling wheel moves at scroll speed × this.
   VENT_TELEGRAPH: 0.6,   // s of hissing before a steam vent erupts.

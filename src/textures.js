@@ -19,6 +19,9 @@ export function makeMaterials() {
     battery: new THREE.MeshStandardMaterial({ color: 0x3ddc84, emissive: 0x1a8a4a, emissiveIntensity: 0.8, roughness: 0.4 }),
     batteryBolt: new THREE.MeshBasicMaterial({ color: 0xfff27a }),
     ground: std(0xd9a46b, { roughness: 0.95 }),
-    robotMetal: std(0x9aa4b2, { roughness: 0.4, metalness: 0.7 }),
+    robotMetal: std(0xb8c0cc, { roughness: 0.35, metalness: 0.85 }),
+    robotAccent: std(0xff8a3d, { roughness: 0.5, metalness: 0.2 }),
+    robotDark: std(0x2f3540, { roughness: 0.6, metalness: 0.5 }),
+    robotEye: new THREE.MeshStandardMaterial({ color: 0x9ff8ff, emissive: 0x30e0ff, emissiveIntensity: 2.5, roughness: 0.3 }),
   };
 }

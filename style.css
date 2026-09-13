@@ -1,0 +1,20 @@
+:root { --ink:#fff; --shadow:0 3px 0 rgba(0,0,0,.35), 0 0 12px rgba(0,0,0,.5); }
+* { box-sizing:border-box; }
+html,body { margin:0; height:100%; overflow:hidden; background:#1a1f3a; font-family: "Nunito","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif; color:var(--ink); user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
+canvas#game { display:block; width:100%; height:100%; touch-action:none; }
+#loading { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:linear-gradient(#2b3a67,#e9a86a); z-index:20; transition:opacity .4s; }
+#loading.done { opacity:0; pointer-events:none; }
+#loading .title { font-size:clamp(36px,9vw,80px); font-weight:900; letter-spacing:.04em; text-shadow:var(--shadow); }
+#loading .bar { width:min(60vw,320px); height:14px; border-radius:7px; background:rgba(0,0,0,.3); overflow:hidden; }
+#loadbar { width:0%; height:100%; background:#4ff0ff; transition:width .15s; }
+#hud { position:fixed; inset:0; pointer-events:none; font-weight:900; text-shadow:var(--shadow); padding:max(12px,env(safe-area-inset-top)) 16px; }
+#timer { position:absolute; left:16px; top:14px; font-size:clamp(20px,4vw,34px); font-variant-numeric:tabular-nums; }
+#score { position:absolute; right:16px; top:14px; text-align:right; font-size:clamp(26px,5vw,42px); font-variant-numeric:tabular-nums; }
+#score.flash #scorenum { animation:pop .5s; color:#ffe27a; }
+#combo { font-size:clamp(14px,2.5vw,22px); color:#ffe27a; min-height:1.2em; }
+#shields { position:absolute; left:50%; top:14px; transform:translateX(-50%); font-size:clamp(24px,5vw,40px); letter-spacing:.1em; }
+#shields span { display:inline-block; transition:transform .2s, opacity .2s; }
+#shields span.lost { opacity:.25; transform:scale(.7); }
+#fps { position:absolute; left:16px; bottom:12px; font-size:16px; font-family:monospace; }
+#message { position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-size:clamp(48px,12vw,140px); text-align:center; }
+@keyframes pop { 0%{transform:scale(1)} 30%{transform:scale(1.35)} 100%{transform:scale(1)} }

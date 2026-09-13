@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Bolt Runner</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="loading"><div class="title">BOLT RUNNER</div><div class="bar"><div id="loadbar"></div></div><div id="loadtext">Warming up…</div></div>
+<div id="hud" hidden>
+  <div id="timer">00:00.00</div>
+  <div id="shields"></div>
+  <div id="score"><div id="scorenum">00000</div><div id="combo"></div></div>
+  <div id="fps" hidden></div>
+  <div id="message"></div>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

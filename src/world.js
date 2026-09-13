@@ -57,7 +57,7 @@ export class World {
     if (!this.cur || immediate) { this.cur = target; this.from = toState(target); this.to = toState(target); this.blend = 1; this.applyState(); }
     else { this.from = toState(this.cur); this.to = target; this.blend = 0; }
   }
-  phaseIndex() { return (((this.cycle ?? 0) + this.phaseOffset + this.biome.def.startPhase) % 4 + 4) % 4; }
+  phaseIndex() { return (((this.cycle ?? 0) + this.phaseOffset + (this.startPhaseOverride ?? this.biome.def.startPhase)) % 4 + 4) % 4; } // Journey pins the start phase so time of day flows across seams
   jumpToPhase(i) { this.phase = i; this.cur = toState(this.biome.def.dayNight[i]); this.from = toState(this.cur); this.to = toState(this.cur); this.blend = 1; this.applyState(); } // debug: no blend
   get phaseName() { return ['dawn', 'noon', 'dusk', 'night'][this.phase]; }
 

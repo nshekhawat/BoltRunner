@@ -10,7 +10,7 @@ const PORT = 8765, DBG = 9333;
 const srv = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
 const PROFILE = `/tmp/boltchrome-${process.pid}`;
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
-  '--headless=new', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--window-size=${opt('size') ?? '1280,720'}`,
+  '--headless=new', ...(args.includes('--gpu') ? [] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']), `--window-size=${opt('size') ?? '1280,720'}`, // --gpu: real GPU (frame-time checks)
   '--no-first-run', `--user-data-dir=${PROFILE}`, `--remote-debugging-port=${DBG}`,
   '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));

@@ -45,6 +45,7 @@ button { font:inherit; font-weight:900; color:#fff; border:0; cursor:pointer; te
 .stats td:nth-child(3) { font-size:.7em; opacity:.8; }
 .newbest { font-size:clamp(22px,6vw,40px); font-weight:900; color:#ffe27a; animation:bounce .6s infinite alternate; text-shadow:var(--shadow); margin:6px 0; }
 .newbest[hidden] { display:none; }
+#message.small { font-size:clamp(28px,6vw,64px); }
 #message.bounce { animation:bounce .5s infinite alternate; color:#ffe27a; font-size:clamp(34px,9vw,90px); }
 @keyframes bounce { from{transform:translate(-50%,-50%) scale(1)} to{transform:translate(-50%,-50%) scale(1.2)} }
 .newbest { animation-name:bounce2; }

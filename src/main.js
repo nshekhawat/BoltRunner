@@ -9,8 +9,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { CONFIG as C } from './config.js';
 import { makeSharedMaterials } from './textures.js';
-import { BIOMES, BIOME_IDS, buildBiome, buildBiomeSync, disposeBiome } from './biomes/index.js';
+import { BIOMES, BIOME_IDS, buildBiome, buildBiomeSync, disposeBiome, disposeBiomeChunked } from './biomes/index.js';
 import { Select } from './select.js';
+import { Journey } from './journey.js';
 import { World } from './world.js';
 import { Particles } from './fx.js';
 import { Game } from './game.js';
@@ -38,9 +39,9 @@ const params = new URLSearchParams(location.search); world.phaseOffset = +(param
 await progress(35, 'Painting the world…');
 let biome = null;
 // Swap the whole environment. Everything the old biome owned is disposed; renderer.info.memory must return to the same numbers.
-function applyBiome(next) {
-  const old = biome; world.setBiome(next, !old); game.setBiome(next); biome = next;
-  if (old) disposeBiome(old);
+function applyBiome(next, prebuilt = null, deferDispose = false) {
+  const old = biome; world.setBiome(next, !old); const oldGeos = game.setBiome(next, prebuilt); biome = next;
+  if (old) { const gen = disposeBiomeChunked(old, oldGeos); if (deferDispose) { const step = () => { if (!gen.next().done) idle(step); }; idle(step); } else for (const _ of gen); }
   renderer.toneMappingExposure = next.def.lighting.exposure; bloom.threshold = next.def.lighting.bloomThreshold; // per-biome, not global
   hud.biome(next.def); return next;
 }
@@ -48,7 +49,7 @@ const switchBiome = id => applyBiome(buildBiomeSync(BIOMES[id], shared)); // syn
 // Chunked build on idle time: one generator step per idle callback so the frame never stalls. Resolves with the built instance.
 const idle = fn => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 120 }) : setTimeout(fn, 0));
 function prepareBiome(id, onProgress) {
-  return new Promise(res => { const gen = buildBiome(BIOMES[id], shared); let n = 0; const step = () => { const r = gen.next(); onProgress?.(Math.min(1, ++n / 9)); if (r.done) res(r.value); else idle(step); }; step(); });
+  return new Promise(res => { const gen = buildBiome(BIOMES[id], shared); let n = 0; const step = () => { const r = gen.next(); onProgress?.(Math.min(1, ++n / 9)); if (r.done) res(r.value); else idle(step); }; idle(step); });
 }
 const fx = new Particles(scene, shared.textures.dot);
 const audio = new AudioEngine();
@@ -141,6 +142,30 @@ addEventListener('resize', resize); resize();
   else if (store.quality && TIERS.includes(store.quality)) setQuality(store.quality);
   else { let tier = guessTier(); if (tier !== 'low') { const fps = await probeFps(tier); if (fps < 30) tier = 'low'; else if (fps < 50 && tier === 'high') tier = 'medium'; } setQuality(tier); }
 }
+// ---- Journey ---------------------------------------------------------------------------------------------------
+const journey = new Journey(scene, shared);
+// Shader programs differ between on-screen and render-target output (tone mapping lives in the shader), so compile under the target the tier renders to.
+const parallelCompile = !!renderer.getContext().getExtension('KHR_parallel_shader_compile');
+async function compileFor(obj) { renderer.setRenderTarget(quality === 'low' ? null : composer.readBuffer); try { parallelCompile ? await renderer.compileAsync(obj, camera, scene) : renderer.compile(obj, camera, scene); } finally { renderer.setRenderTarget(null); } }
+journey.gate.visible = true; await compileFor(journey.gate); journey.gate.visible = false; // no shader compile on the first gateway
+// Everything the swap needs, built on idle time: biome instance, obstacle pools, and compiled shaders. The swap itself is then a few scene ops.
+async function preparePending(id) {
+  const inst = await prepareBiome(id);
+  const pools = await new Promise(res => { const gen = game.obstacles.buildPools(inst); const step = () => { const r = gen.next(); r.done ? res(r.value) : idle(step); }; step(); });
+  const tmp = new THREE.Group(); const groups = [inst.root, ...Object.values(pools.pools).flat(), ...pools.shells];
+  for (const g of groups) { g.visible = true; tmp.add(g); }
+  await compileFor(tmp);
+  for (const g of groups) { tmp.remove(g); if (g !== inst.root) g.visible = false; }
+  return { inst, pools };
+}
+const journeyHooks = {
+  prepare: preparePending,
+  swap: p => { applyBiome(p.inst, p.pools, true); hud.message(p.inst.def.displayName, 1.6, false, true); },
+  discard: p => { if (p.pools) for (const g of Object.values(p.pools.pools).flat()) g.traverse(o => o.geometry?.dispose()); if (p.inst) disposeBiome(p.inst); },
+  hold: (v, exitX) => game.obstacles.hold(v, exitX), last: () => game.obstacles.spawner.last, accent: id => BIOMES[id].palette.accent,
+};
+game.on('state', s => { if (s === 'PLAYING' && game.prevState === 'COUNTDOWN') { if (game.journey) { journey.begin(biome.def.id); world.startPhaseOverride = biome.def.startPhase; } else journey.end(journeyHooks); } else if (s === 'CRASHED' || s === 'MENU' || s === 'SELECT') { journey.end(journeyHooks); world.startPhaseOverride = null; } });
+
 // ---- Select screen ---------------------------------------------------------------------------------------------
 let highlightToken = 0;
 const select = new Select({
@@ -172,14 +197,16 @@ await progress(100, 'Tap or press SPACE to start');
 hud.show(true); loading.classList.add('ready');
 addEventListener('keydown', firstGesture, true); addEventListener('pointerdown', firstGesture, true);
 
-let last = performance.now(), frames = 0, fpsT = 0, lowFpsT = 0, breathT = 0, bgT = 0;
+let last = performance.now(), frames = 0, fpsT = 0, lowFpsT = 0, breathT = 0, bgT = 0, cpuMs = 0;
 renderer.setAnimationLoop(now => {
-  const raw = (now - last) / 1000, dt = Math.min(raw, C.MAX_DT); last = now;
+  const raw = (now - last) / 1000, dt = Math.min(raw, C.MAX_DT); last = now; journey.frame(raw, cpuMs); const cpu0 = performance.now();
   const paused = game.state === 'PAUSED';
+  const P = {}; let pt = performance.now(); const mark = k => { const n = performance.now(); P[k] = +(n - pt).toFixed(1); pt = n; }; P.t = journey.t; P.st = journey.state;
   if (!paused) {
-    game.update(dt * game.timeScale); // timeScale: tutorial beat / slow-mo. HUD timers inside use the same scaled clock (they are brief).
+    game.update(dt * game.timeScale); mark('game'); // timeScale: tutorial beat / slow-mo. HUD timers inside use the same scaled clock (they are brief).
     const gdt = dt * game.timeScale;
-    world.update(gdt, game.speed, game.score); game.robot.trailBright = world.trailBright;
+    if (game.state === 'PLAYING') journey.update(gdt, game.score, game.speed, journeyHooks); mark('journey');
+    world.update(gdt, game.speed, game.score); game.robot.trailBright = world.trailBright; mark('world');
     fx.update(gdt, game.speed); updateCamera(dt);
     const br = biome.def.particles.breath; if (br && game.state === 'PLAYING') { breathT += dt; if (breathT > br.every) { breathT = 0; fx.emit(0.4, game.player.y + 1.55, 0.3, 5, br.colors, 0.8, 0.6, 0.9, 0.3); } }
     audio.setMood(Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START))), world.cur.stars);
@@ -188,8 +215,9 @@ renderer.setAnimationLoop(now => {
     // Auto-downgrade: sustained low FPS during play drops one tier (never while paused or on the first seconds after a switch).
     if (autoQuality && game.state === 'PLAYING' && fps < C.FPS_DOWNGRADE_BELOW) { lowFpsT += 0.5; if (lowFpsT >= C.FPS_DOWNGRADE_AFTER && quality !== 'low') { setQuality(TIERS[TIERS.indexOf(quality) + 1]); hud.message('Quality → ' + quality, 1.2); lowFpsT = -3; } } else lowFpsT = Math.max(0, lowFpsT);
   }
-  if (quality === 'low') renderer.render(scene, camera); else composer.render();
-  bgT += raw; if (bgT > 1.5 && !paused) { bgT = 0; game.obstacles.measureBackground(renderer, camera); } // pickup contrast plate follows the real background
+  mark('misc'); if (quality === 'low') renderer.render(scene, camera); else composer.render(); mark('render');
+  bgT += raw; if (bgT > 1.5 && !paused) { bgT = 0; game.obstacles.measureBackground(renderer, camera); } game.obstacles.pollBackground(renderer); // pickup contrast plate follows the real background (async readback)
+  cpuMs = performance.now() - cpu0; if (cpuMs > 12 && journey.active) (window.__slow ??= []).push({ ...P, cpu: +cpuMs.toFixed(1), score: game.score });
 });
-window.bolt = { game, world, renderer, scene, camera, setQuality, switchBiome, get biome() { return biome; }, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
+window.bolt = { game, world, renderer, scene, camera, journey, setQuality, switchBiome, get biome() { return biome; }, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
 console.log('three', THREE.REVISION);

@@ -1,5 +1,6 @@
 // Biome loader and disposal. An environment is data: adding a biome = one file + one import in registry.js.
 import * as THREE from 'three';
+import { CONFIG as C } from '../config.js';
 import { canvasTexture, makeNoiseTexture, heightToNormal, fbm, smooth, clamp255, mix } from '../textures.js';
 export { BIOMES, BIOME_IDS } from './registry.js';
 
@@ -18,7 +19,7 @@ const prim = {
 function makeCtx(shared, inst) {
   const track = t => { inst.textures.add(t); return t; };
   return {
-    THREE, prim, shared, S: 256,
+    THREE, prim, shared, S: 256, viewDir: new THREE.Vector3(...C.CAMERA_LOOK).sub(new THREE.Vector3(...C.CAMERA_POS)).normalize(), // chase-camera view direction (face decor toward it)
     std: o => new THREE.MeshStandardMaterial(o), basic: o => new THREE.MeshBasicMaterial(o),
     tex: { canvasTexture: (...a) => track(canvasTexture(...a)), heightToNormal: (...a) => track(heightToNormal(...a)), clone: t => { const c = t.clone(); c.needsUpdate = true; return track(c); }, makeNoiseTexture, fbm, smooth, clamp255, mix },
     rnd: seed => () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }, // deterministic per-biome randomness
@@ -69,10 +70,13 @@ export function* buildBiome(def, shared) {
 export function buildBiomeSync(def, shared) { const g = buildBiome(def, shared); let r; do r = g.next(); while (!r.done); return r.value; }
 
 // Free every GPU resource the instance owns. Materials used by obstacle meshes are in inst.M, so Obstacles.setBiome must run first.
-export function disposeBiome(inst) {
-  inst.root.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) for (const m of [].concat(o.material)) m.dispose(); });
-  inst.root.removeFromParent(); inst.root.clear();
+// A generator: yields every few deletes so Journey can spread the work over idle callbacks (a full dispose is ~30 ms of GL deletes).
+export function* disposeBiomeChunked(inst, extraGeometries = []) {
+  const objs = []; inst.root.traverse(o => objs.push(o)); inst.root.removeFromParent(); inst.root.clear(); let n = 0;
+  for (const o of objs) { if (o.geometry) o.geometry.dispose(); if (o.material) for (const m of [].concat(o.material)) m.dispose(); if (++n % 25 === 0) yield; }
+  for (const g of extraGeometries) { g.dispose(); if (++n % 25 === 0) yield; }
   for (const v of Object.values(inst.M)) for (const m of [].concat(v)) if (m?.isMaterial) m.dispose();
-  for (const t of inst.textures) t.dispose(); inst.textures.clear();
+  for (const t of inst.textures) { t.dispose(); if (++n % 5 === 0) yield; } inst.textures.clear();
   inst.groundMat.dispose(); inst.laneMat.dispose(); inst.M = null;
 }
+export function disposeBiome(inst) { for (const _ of disposeBiomeChunked(inst)); }

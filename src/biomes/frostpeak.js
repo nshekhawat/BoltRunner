@@ -30,7 +30,7 @@ export default {
       car: std({ color: 0xd03030, roughness: 0.5, metalness: 0.3 }), glass: std({ color: 0x80a0c0, roughness: 0.2, metalness: 0.2 }), tyre: std({ color: 0x202024, roughness: 0.9 }),
       owl: std({ color: 0xf8f8ff, roughness: 0.9 }), owlDark: std({ color: 0x8890a0, roughness: 0.9 }), owlEye: std({ color: 0xffd040, emissive: 0xffb000, emissiveIntensity: 1.2 }),
       plume: ctx.basic({ color: 0xe0f4ff, transparent: true, opacity: 0.55, depthWrite: false }),
-      iceWire: std({ color: 0xa0e0ff, emissive: 0x2080c0, emissiveIntensity: 0.8, wireframe: true }),
+      iceRing: std({ color: 0xc0ecff, emissive: 0x3090d0, emissiveIntensity: 0.7, roughness: 0.2, transparent: true, opacity: 0.85 }),
       frost: std({ color: 0xffffff, emissive: 0x80c0ff, emissiveIntensity: 0.4, roughness: 0.3 }),
       glow: std({ color: 0xc0f0ff, emissive: 0x60d0ff, emissiveIntensity: 2, roughness: 0.3 }),
     };
@@ -80,7 +80,7 @@ export default {
     chaser: { impact: 'thud', makeMesh: (ctx, M) => { const { prim: P } = ctx, g = P.group(), r = P.group(); r.name = 'roll'; r.position.y = 0.55; r.add(P.sphere(0.55, M.snow, 0, 0, 0, 14), P.sphere(0.2, M.snowDrift, 0.3, 0.3, 0.3, 6), P.sphere(0.15, M.snowDrift, -0.35, -0.2, 0.3, 6)); g.add(r); return g; } },
   },
   pickup: { makePickupShell: (ctx, M) => { const { prim: P, THREE } = ctx, g = P.group(); // open ice cage with frost crystals; snow spirals in
-    const cage = new THREE.Mesh(new THREE.IcosahedronGeometry(0.78, 1), M.iceWire); cage.userData.noOutline = true; g.add(cage);
+    for (const tilt of [0.25, -0.25]) { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.035, 6, 32), M.iceRing); ring.lookAt(ctx.viewDir); ring.rotateX(tilt); ring.userData.noOutline = true; g.add(ring); } // open ice cage: rings face the camera, nothing crosses the core
     for (let i = 0; i < 6; i++) { const c = P.cone(0.06, 0.3, M.frost, 0, 0, 0, 5); c.position.set(Math.cos(i * 1.05) * 0.78, Math.sin(i * 2.3) * 0.3, Math.sin(i * 1.05) * 0.78); c.lookAt(c.position.clone().multiplyScalar(3)); c.rotateX(Math.PI / 2); c.userData.noOutline = true; g.add(c); }
     for (let i = 0; i < 3; i++) { const s = P.sphere(0.05, M.snow, Math.cos(i * 2.1) * 0.9, i * 0.25 - 0.25, Math.sin(i * 2.1) * 0.9, 6); s.userData.noOutline = true; g.add(s); } return g; } },
   audio: { musicPreset: 'frost', ambientBed: 'blizzard', impactTimbre: 'ice', footstepTimbre: 'crunch' },

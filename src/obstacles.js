@@ -21,14 +21,17 @@ function addOutline(group, mat) {
   });
 }
 const disposeTree = root => root.traverse(o => { if (o.geometry && !o.userData.keep) o.geometry.dispose(); });
+const collectGeometries = (root, out) => { root.traverse(o => { if (o.geometry && !o.userData.keep) out.push(o.geometry); }); return out; };
 
 // ---- Health pickup: invariant recognition layer -----------------------------------------------
 const WHITE = new THREE.Color(0xffffff), DARK = new THREE.Color();
+// Chase-camera view direction: rings are oriented to face it so they project as full circles around the core, never across it.
+export const VIEW_DIR = new THREE.Vector3(...C.CAMERA_LOOK).sub(new THREE.Vector3(...C.CAMERA_POS)).normalize();
 const PICK = {
   // transparent:true (opacity 1) puts core and ring in the transparent pass so renderOrder can place them above the halo plate.
   core: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 3, roughness: 0.2, transparent: true }),
   ring: new THREE.MeshStandardMaterial({ color: 0x9ffcff, emissive: 0x40e8ff, emissiveIntensity: 2.2, roughness: 0.3, metalness: 0.4, transparent: true }),
-  coreGeo: new THREE.SphereGeometry(0.3, 20, 14), ringGeo: new THREE.TorusGeometry(0.62, 0.055, 10, 36), beamGeo: new THREE.PlaneGeometry(0.7, 60),
+  coreGeo: new THREE.SphereGeometry(0.27, 20, 14), ringGeo: new THREE.TorusGeometry(0.72, 0.055, 10, 36), knobGeo: new THREE.SphereGeometry(0.1, 8, 6), beamGeo: new THREE.PlaneGeometry(0.7, 60),
 };
 let palette = PALETTES.normal;
 export function setPalette(id) { palette = PALETTES[id] ?? PALETTES.normal; PICK.ring.emissive.setHex(palette.ring); PICK.ring.color.setHex(palette.ring); }
@@ -55,10 +58,11 @@ export class Obstacles {
   buildPickup() {
     const g = new THREE.Group(), body = new THREE.Group(); body.name = 'body'; body.position.y = C.PICKUP_HEIGHT; g.add(body);
     const core = new THREE.Mesh(PICK.coreGeo, PICK.core); core.name = 'core'; core.userData.keep = true; core.renderOrder = 12; body.add(core);
-    const ring = new THREE.Mesh(PICK.ringGeo, PICK.ring); ring.name = 'ring'; ring.userData.keep = true; ring.rotation.x = 1.1; ring.renderOrder = 13; body.add(ring);
+    const ring = new THREE.Mesh(PICK.ringGeo, PICK.ring); ring.name = 'ring'; ring.userData.keep = true; ring.lookAt(VIEW_DIR); ring.renderOrder = 13; body.add(ring);
+    for (let k = 0; k < 4; k++) { const knob = new THREE.Mesh(PICK.knobGeo, PICK.ring); knob.position.set(Math.cos(k * Math.PI / 2) * 0.72, Math.sin(k * Math.PI / 2) * 0.72, 0); knob.userData.keep = true; knob.renderOrder = 13; ring.add(knob); } // knobs make the spin visible
     for (const m of [core, ring]) { const o = new THREE.Mesh(m.geometry, this.outlineMat); o.scale.setScalar(1.08); o.userData.noOutline = true; o.userData.keep = true; m.add(o); } // thin rim outline
-    const rim = new THREE.Sprite(this.rimMat); rim.scale.setScalar(1.9); rim.renderOrder = 9; body.add(rim);
-    const halo = new THREE.Sprite(this.haloMat); halo.scale.setScalar(1.6); halo.name = 'halo'; halo.renderOrder = 10; body.add(halo); // draw order: beam/rim 9 → halo 10 → shell 11 → core 12 → ring 13
+    const rim = new THREE.Sprite(this.rimMat); rim.scale.setScalar(2.05); rim.renderOrder = 9; body.add(rim);
+    const halo = new THREE.Sprite(this.haloMat); halo.scale.setScalar(1.75); halo.name = 'halo'; halo.renderOrder = 10; body.add(halo); // draw order: beam/rim 9 → halo 10 → shell 11 → core 12 → ring 13
     const beam = new THREE.Mesh(PICK.beamGeo, this.beamMat); beam.name = 'beam'; beam.userData.keep = true; beam.position.y = 30; beam.rotation.y = 0.5; beam.renderOrder = 9; g.add(beam);
     const shell = new THREE.Group(); shell.name = 'shell'; body.add(shell);
     const dbg = new THREE.Mesh(new THREE.BoxGeometry(DEFS.pickup.boxes[0][2], DEFS.pickup.boxes[0][3], 1), this.dbgMat); dbg.position.y = C.PICKUP_HEIGHT; dbg.visible = false; g.add(dbg);
@@ -81,34 +85,65 @@ export class Obstacles {
     return g;
   }
 
-  // Swap every pooled mesh for the new biome's art. Old geometries are freed; materials belong to the old biome instance.
-  setBiome(inst) {
-    for (const [type, list] of Object.entries(this.pools)) if (type !== 'pickup') for (const g of list) { disposeTree(g); this.scene.remove(g); } // pickups persist; only their shell changes
-    for (const g of this.active) if (g.userData.type !== 'pickup') { disposeTree(g); this.scene.remove(g); }
-    this.active = this.active.filter(g => g.userData.type === 'pickup'); this.pools = {};
-    this.biome = inst; this.outlineMat.color.setHex(inst.def.palette.rim); this.rimMat.color.copy(complement(inst.def.palette.sky)); this.beamMat.color.copy(this.rimMat.color); this.setBackgroundLuminance(this.sceneL); this.applyPlate(0);
+  // Build the pools for a biome instance. A generator (one archetype per step) so Journey can do it on idle time before the swap.
+  *buildPools(inst) {
+    const pools = {};
     for (const type of Object.keys(DEFS)) {
-      if (DEFS[type].pickup) continue; this.pools[type] = [];
-      for (let i = 0; i < C.POOL_PER_TYPE; i++) { const g = this.build(type, inst); g.visible = false; this.scene.add(g); this.pools[type].push(g); }
+      if (DEFS[type].pickup) continue; pools[type] = [];
+      for (let i = 0; i < C.POOL_PER_TYPE; i++) { const g = this.build(type, inst); g.visible = false; pools[type].push(g); }
+      yield;
     }
-    for (const p of this.pickups) { const shell = p.getObjectByName('shell'); disposeTree(shell); shell.clear(); const s = inst.def.pickup.makePickupShell(inst.ctx, inst.M); addOutline(s, this.outlineMat); shell.add(s);
-      s.traverse(o => { o.renderOrder = 11; if (o.material?.transparent) o.material.depthWrite = false; }); } // shell sits between the halo plate and the core, never occludes it
+    const shells = this.pickups.map(() => { const s = inst.def.pickup.makePickupShell(inst.ctx, inst.M); addOutline(s, this.outlineMat); s.traverse(o => { o.renderOrder = 11; if (o.material?.transparent) o.material.depthWrite = false; }); return s; }); // shell sits between the halo plate and the core
+    return { pools, shells };
+  }
+  // Swap every pooled mesh for the new biome's art. Old geometries are freed; materials belong to the old biome instance.
+  // Returns the old pools' geometries; the caller disposes them (immediately, or chunked on idle time in Journey).
+  setBiome(inst, prebuilt = null) {
+    const old = [];
+    for (const [type, list] of Object.entries(this.pools)) if (type !== 'pickup') for (const g of list) { collectGeometries(g, old); this.scene.remove(g); } // pickups persist; only their shell changes
+    for (const g of this.active) if (g.userData.type !== 'pickup') { collectGeometries(g, old); this.scene.remove(g); }
+    this.active = this.active.filter(g => g.userData.type === 'pickup');
+    this.biome = inst; this.outlineMat.color.setHex(inst.def.palette.rim); this.rimMat.color.copy(complement(inst.def.palette.sky)); this.beamMat.color.copy(this.rimMat.color); this.setBackgroundLuminance(this.sceneL); this.applyPlate(0);
+    const { pools, shells } = prebuilt ?? (() => { const g = this.buildPools(inst); let r; do r = g.next(); while (!r.done); return r.value; })();
+    this.pools = pools; for (const list of Object.values(pools)) for (const g of list) this.scene.add(g);
+    this.pickups.forEach((p, i) => { const shell = p.getObjectByName('shell'); collectGeometries(shell, old); shell.clear(); shell.add(shells[i]); });
     this.pools.pickup = this.pickups.filter(p => !p.visible);
+    return old;
   }
   // Contrast guarantee. The plate is a light or dark tint of the complement hue depending on what is actually behind the pickup lane:
   // display luminance > 0.18 → near-black plate, else near-white plate (with hysteresis). Either way the median footprint pixel clears 4.5:1.
   // Pure black or white plate: at the crossover luminance (~0.18) only the extremes reach 4.5:1, so the complement hue lives on the rim sprite and the beam.
   setBackgroundLuminance(l) { this.sceneL = l; this.plateDark = l > 0.18; this.plateTarget.setScalar(this.plateDark ? 0 : 1); }
   applyPlate(dt) { this.haloMat.color.lerp(this.plateTarget, dt === 0 ? 1 : Math.min(1, dt * 3)); }
-  // Reads a 6×6 block of the freshly rendered frame at the lane ahead. Throttled by the caller; skipped when anything sits there.
+  // Reads a 6×6 block of the freshly rendered frame at the lane ahead. Non-blocking: readPixels goes into a pixel-pack buffer and
+  // pollBackground() collects it once the GPU fence signals, so the pipeline never stalls. Skipped when anything sits on the sample spot.
   measureBackground(renderer, camera) {
     const x = 11; for (const g of this.active) if (Math.abs(g.position.x - x) < 3) return;
-    const gl = renderer.getContext(), size = renderer.getDrawingBufferSize(this._v2), v = this._v3.set(x, C.PICKUP_HEIGHT, 0).project(camera);
+    const gl = renderer.getContext(); if (this._fence) return; // previous read still in flight
+    const size = renderer.getDrawingBufferSize(this._v2), v = this._v3.set(x, C.PICKUP_HEIGHT, 0).project(camera);
     const cx = Math.round((v.x + 1) / 2 * size.x) - 3, cy = Math.round((v.y + 1) / 2 * size.y) - 3; if (cx < 0 || cy < 0) return;
+    this._pbo ??= gl.createBuffer(); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this._pbo); gl.bufferData(gl.PIXEL_PACK_BUFFER, this._px.byteLength, gl.STREAM_READ);
+    gl.readPixels(cx, cy, 6, 6, gl.RGBA, gl.UNSIGNED_BYTE, 0); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    this._fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+  }
+  pollBackground(renderer) {
+    if (!this._fence) return; const gl = renderer.getContext();
+    if (gl.getSyncParameter(this._fence, gl.SYNC_STATUS) !== gl.SIGNALED) return;
+    gl.deleteSync(this._fence); this._fence = null;
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this._pbo); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, this._px); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    let sum = 0; for (let i = 0; i < 36; i++) sum += 0.2126 * lin(this._px[i * 4]) + 0.7152 * lin(this._px[i * 4 + 1]) + 0.0722 * lin(this._px[i * 4 + 2]);
+    this.setBackgroundLuminance(sum / 36);
+  }
+  // Synchronous variant for the contrast test harness.
+  measureBackgroundSync(renderer, camera) {
+    const gl = renderer.getContext(), size = renderer.getDrawingBufferSize(this._v2), v = this._v3.set(11, C.PICKUP_HEIGHT, 0).project(camera);
+    const cx = Math.round((v.x + 1) / 2 * size.x) - 3, cy = Math.round((v.y + 1) / 2 * size.y) - 3;
     gl.readPixels(cx, cy, 6, 6, gl.RGBA, gl.UNSIGNED_BYTE, this._px); let sum = 0;
     for (let i = 0; i < 36; i++) sum += 0.2126 * lin(this._px[i * 4]) + 0.7152 * lin(this._px[i * 4 + 1]) + 0.0722 * lin(this._px[i * 4 + 2]);
     this.setBackgroundLuminance(sum / 36);
   }
+  // Journey: no spawns while a gateway is on the lane.
+  hold(v, exitX) { this.holding = v; if (!v && exitX !== undefined) { this.spawner.last = { x: exitX, mult: 1, action: 'run' }; this.spawner.cooldown = 0.3; } }
   reset() {
     for (const g of this.active) { g.visible = false; this.pools[g.userData.type].push(g); }
     this.active.length = 0; this.spawner.reset();
@@ -135,7 +170,7 @@ export class Obstacles {
       if (d.fly !== undefined) { body.position.y = d.fly + Math.sin(u.t * 5) * 0.08; body.traverse(o => { if (o.name === 'spin') o.rotation.y += dt * 40; else if (o.name === 'flap') o.rotation.x = (o.userData.base ?? 0) + Math.sin(u.t * 9) * 0.5 * (o.userData.side ?? 1); }); }
       if (d.speedMult) body.traverse(o => { if (o.name === 'roll') o.rotation.z -= speed * d.speedMult * dt / (o.userData.r ?? 0.55); });
       body.traverse(o => { if (o.name === 'flicker') o.visible = Math.sin(u.t * 17) + Math.sin(u.t * 5.3) > -0.6; });
-      if (d.pickup) { body.position.y = C.PICKUP_HEIGHT + Math.sin(u.t * Math.PI * 2 * 1.2) * 0.12; body.getObjectByName('ring').rotation.z += dt * 2.4; body.getObjectByName('shell').rotation.y += dt * 1.2;
+      if (d.pickup) { body.position.y = C.PICKUP_HEIGHT + Math.sin(u.t * Math.PI * 2 * 1.2) * 0.12; body.getObjectByName('ring').rotateZ(dt * 2.4); body.getObjectByName('shell').rotation.y += dt * 1.2;
         PICK.core.emissive.setHex(palette.core).lerp(WHITE, 0.5 + 0.5 * Math.sin(u.t * 6)); // white → core-colour pulse
         const tt = timeToPlayer(g.position.x, speed), on = tt <= C.PICKUP_BEAM_LEAD; if (on && !u.beamOn) ev.beam = true; u.beamOn = on;
         this.beamMat.opacity = THREE.MathUtils.lerp(this.beamMat.opacity, on && tt > 0 ? 0.55 : 0, Math.min(1, dt * 4)); }
@@ -162,6 +197,7 @@ export class Obstacles {
       if (!u.passed && !u.hit && !d.pickup && g.position.x + d.halfW < C.ROBOT_X - 0.6) { u.passed = true; ev.passed++; }
       if (g.position.x < C.DESPAWN_X || (d.pickup && u.passed)) { g.visible = false; this.active.splice(i, 1); this.pools[u.type].push(g); }
     }
+    if (this.holding) { this.spawner.cooldown = Math.max(this.spawner.cooldown, 0.5); if (this.spawner.last) this.spawner.last.x -= speed * this.spawner.last.mult * dt; return; }
     const type = this.spawner.tick(dt, speed, score, shields < C.SHIELDS_MAX && this.pools.pickup.length > 0);
     if (type) this.spawn(type);
   }

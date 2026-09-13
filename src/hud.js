@@ -18,7 +18,7 @@ export const hud = {
   timer(s) { const t = fmtTime(s); if (t !== lastTimer) { el.timer.textContent = t; lastTimer = t; } },
   combo(n) { if (n !== lastCombo) { el.combo.textContent = n >= 2 ? `×${n} combo` : ''; lastCombo = n; } },
   shields(n, max) { if (n === lastShields) return; lastShields = n; el.shields.innerHTML = Array.from({ length: max }, (_, i) => `<span class="${i < n ? '' : 'lost'}">${HEART}</span>`).join(''); },
-  message(text, secs = 1, bounce = false) { el.msg.textContent = text; el.msg.classList.toggle('bounce', bounce); msgTimer = secs; },
+  message(text, secs = 1, bounce = false, small = false) { el.msg.textContent = text; el.msg.classList.toggle('bounce', bounce); el.msg.classList.toggle('small', small); msgTimer = secs; },
   fps(text) { el.fps.textContent = text; },
   toggleFps() { el.fps.hidden = !el.fps.hidden; },
   biome(def) { document.title = `Bolt Runner · ${def.displayName}`; },

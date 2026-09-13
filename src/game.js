@@ -25,7 +25,7 @@ export class Game {
   }
   setMode(m) { this.mode = m; store.mode = m; save(); hud.mode(m); this.obstacles.setDifficulty(m); }
   // Swap the environment: obstacle art, pickup shell and robot accent follow the biome. Physics does not.
-  setBiome(inst) { this.biome = inst; this.obstacles.setBiome(inst); this.robot.setAccent(inst.def.robotAccent.emissive, inst.def.robotAccent.trailColor); }
+  setBiome(inst, prebuilt) { this.biome = inst; const old = this.obstacles.setBiome(inst, prebuilt); this.robot.setAccent(inst.def.robotAccent.emissive, inst.def.robotAccent.trailColor); return old; }
   on(name, fn) { (this.handlers[name] ??= []).push(fn); return this; }
   emit(name, a) { const h = this.handlers[name]; if (h) for (const f of h) f(a); }
 

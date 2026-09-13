@@ -30,7 +30,7 @@ export function contrastTest(env, { palette = 'normal' } = {}) {
         v.set(11, C.PICKUP_HEIGHT, 0).project(camera); const cx = Math.round((v.x + 1) / 2 * size.x), cy = Math.round((v.y + 1) / 2 * size.y);
         v.set(11, C.PICKUP_HEIGHT + 0.5, 0).project(camera); const r = Math.max(3, Math.round(Math.abs((v.y + 1) / 2 * size.y - cy))); // footprint: core + inner halo
         pick.visible = false; renderer.render(scene, camera); const bg = sample(cx, cy, r);
-        game.obstacles.measureBackground(renderer, camera); game.obstacles.applyPlate(0); // exactly what the runtime does, once per 1.5 s
+        game.obstacles.measureBackgroundSync(renderer, camera); game.obstacles.applyPlate(0); // exactly what the runtime does, once per 1.5 s
         pick.visible = true; renderer.render(scene, camera); const fg = sample(cx, cy, r);
         pick.visible = false; game.obstacles.beamMat.opacity = 0;
         const ratios = fg.map((f, i) => (Math.max(f, bg[i]) + 0.05) / (Math.min(f, bg[i]) + 0.05)).sort((a, b) => a - b), ratio = ratios[ratios.length >> 1]; // median pixel

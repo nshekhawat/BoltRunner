@@ -18,6 +18,7 @@ export class Game {
     this.dbgBoxes = [0, 1, 2].map(() => { const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), dbgMat); m.visible = false; scene.add(m); return m; });
     this.handlers = {}; this.ev = {}; this.mode = store.mode in C.SPEED_CAP ? store.mode : C.DIFFICULTY_DEFAULT;
     this.state = 'MENU'; this.prevState = 'MENU'; this.stateTime = 0; this.timeScale = 1; this.slowT = 0; this.tutorialDone = false;
+    this.select = null; this.runKey = 'desert'; // select carousel (set by main); records key for the current run ('journey' in Journey mode)
     this.resetRun();
     this.bindInput();
     this.bindMenu();
@@ -25,13 +26,13 @@ export class Game {
   setMode(m) { this.mode = m; store.mode = m; save(); hud.mode(m); this.obstacles.setDifficulty(m); }
   // Swap the environment: obstacle art, pickup shell and robot accent follow the biome. Physics does not.
   setBiome(inst) { this.biome = inst; this.obstacles.setBiome(inst); this.robot.setAccent(inst.def.robotAccent.emissive, inst.def.robotAccent.trailColor); }
-  on(name, fn) { this.handlers[name] = fn; return this; }
-  emit(name, a) { this.handlers[name]?.(a); }
+  on(name, fn) { (this.handlers[name] ??= []).push(fn); return this; }
+  emit(name, a) { const h = this.handlers[name]; if (h) for (const f of h) f(a); }
 
   resetRun() {
     this.player.reset(); this.obstacles.reset(); this.obstacles.setDifficulty(this.mode);
     this.speed = 0; this.distance = 0; this.score = 0; this.time = 0; this.shields = C.SHIELDS_MAX;
-    this.combo = 0; this.cleared = 0; this.penalty = 0; this.invuln = 0; this.nextMilestone = C.MILESTONE; this.hitFlash = 0; this.beatBest = false;
+    this.combo = 0; this.maxCombo = 0; this.cleared = 0; this.penalty = 0; this.invuln = 0; this.nextMilestone = C.MILESTONE; this.hitFlash = 0; this.beatBest = false;
     hud.score(0); hud.timer(0); hud.shields(this.shields, C.SHIELDS_MAX); hud.combo(0);
   }
   setState(s) { this.prevState = this.state; this.state = s; this.stateTime = 0; hud.menu(s === 'MENU', store.best, store.bestTime); hud.pause(s === 'PAUSED'); if (s !== 'CRASHED') hud.end(false); this.emit('state', s); }
@@ -42,7 +43,8 @@ export class Game {
   jumpPressed() {
     if (!this.ready) return; // audio not unlocked yet: the start screen swallows the first gesture
     switch (this.state) {
-      case 'MENU': this.startRun(); break;
+      case 'MENU': this.setState('SELECT'); break;
+      case 'SELECT': this.select?.pick(); break;
       case 'CRASHED': if (this.stateTime > 1.5) this.startRun(); break;
       case 'PAUSED': this.resume(); break;
       case 'PLAYING': case 'COUNTDOWN': this.player.pressJump(); if (this.slowT > 0) { this.slowT = 0; this.timeScale = 1; hud.message('', 0); } break; // any press skips the tutorial beat
@@ -51,6 +53,7 @@ export class Game {
   bindInput() {
     const JUMP = new Set(['Space', 'ArrowUp', 'KeyW']), DUCK = new Set(['ArrowDown', 'KeyS']);
     addEventListener('keydown', e => {
+      if (this.state === 'SELECT' && this.select?.key(e.code)) { e.preventDefault(); return; }
       if (JUMP.has(e.code)) { e.preventDefault(); if (!e.repeat) this.jumpPressed(); }
       else if (DUCK.has(e.code)) { e.preventDefault(); if (!e.repeat && this.state === 'PLAYING') this.emit('duck'); this.player.setDuck(true); }
       else if (e.code === 'KeyP' || e.code === 'Escape') this.state === 'PAUSED' ? this.resume() : this.pause();
@@ -96,14 +99,14 @@ export class Game {
       this.distance += this.speed * dt; this.time += dt;
       this.score = Math.max(0, Math.floor(this.distance * C.POINTS_PER_UNIT) - this.penalty);
       if (this.score >= this.nextMilestone) { this.nextMilestone += C.MILESTONE; hud.flashScore(); this.emit('milestone', this.score); }
-      if (!this.beatBest && store.best > 0 && this.score > store.best) { this.beatBest = true; hud.message('NEW BEST!', 1.6, true); this.emit('newbest'); }
+      if (!this.beatBest && (store.records[this.runKey]?.best ?? 0) > 0 && this.score > store.records[this.runKey].best) { this.beatBest = true; hud.message('NEW BEST!', 1.6, true); this.emit('newbest'); }
       const e = p.update(dt); if (e.jumped) this.emit('jump'); if (e.landed) this.emit('land');
       this.invuln = Math.max(0, this.invuln - dt); this.hitFlash = Math.max(0, this.hitFlash - dt);
       const boxes = this.robot.boxes(p.y, p.ducking, C.HITBOX_SCALE[this.mode]);
       this.dbgBoxes.forEach((m, i) => { m.visible = C.DEBUG_HITBOXES; if (m.visible) { m.position.set(boxes[i].cx, boxes[i].cy, 0); m.scale.set(boxes[i].w, boxes[i].h, 1); } });
       this.obstacles.update(dt, this.speed, this.score, this.shields, this.ev, this.invuln > 0 ? NO_BOXES : boxes);
       const ev = this.ev;
-      if (ev.passed) { this.combo += ev.passed; this.cleared += ev.passed; hud.combo(this.combo); }
+      if (ev.passed) { this.combo += ev.passed; this.cleared += ev.passed; this.maxCombo = Math.max(this.maxCombo, this.combo); hud.combo(this.combo); }
       if (ev.hiss) this.emit('hiss'); if (ev.erupt) this.emit('erupt');
       if (ev.beam) { this.emit('beam'); if (!this.tutorialDone) { this.tutorialDone = true; this.slowT = 1.0; this.timeScale = 0.6; hud.message('💙 HEALTH', 1.4, true); this.emit('tutorial'); } } // first-seen beat, once per session
       if (ev.pickup) { this.shields = Math.min(C.SHIELDS_MAX, this.shields + 1); hud.shields(this.shields, C.SHIELDS_MAX); this.emit('pickup'); }
@@ -111,17 +114,20 @@ export class Game {
         if (this.mode === 'nofail') this.penalty += C.NOFAIL_HIT_COST; else this.shields--; // practice mode: hits only cost score
         this.combo = 0; this.invuln = C.INVULN_TIME; this.hitFlash = C.INVULN_TIME;
         hud.shields(this.shields, C.SHIELDS_MAX); hud.combo(0); this.emit('hit', ev.hit);
-        if (this.shields <= 0) { const st = this.stats(); this.setState('CRASHED'); hud.end(true, st, store); this.emit('crashed', st); }
+        if (this.shields <= 0) { const st = this.stats(); this.setState('CRASHED'); hud.end(true, st); this.emit('crashed', st); }
       }
       hud.score(this.score); hud.timer(this.time);
     }
+    if (this.state === 'SELECT') this.select?.update(dt);
     if (this.state === 'CRASHED') { this.speed = Math.max(0, this.speed - 30 * dt); this.player.update(dt); this.obstacles.update(dt, this.speed, this.score, C.SHIELDS_MAX, this.ev, NO_BOXES); }
     const mode = this.state === 'PLAYING' ? (p.grounded ? (p.ducking ? 'duck' : 'run') : 'jump') : this.state === 'CRASHED' ? 'stumble' : this.state === 'COUNTDOWN' ? 'run' : 'idle';
     if (this.robot.update(dt, { mode, y: p.y, vy: p.vy, speed: this.speed, ducking: p.ducking, hitFlash: this.hitFlash, airtime: p.airtime, grounded: p.grounded })) this.emit('step', this.speed);
   }
   stats() {
-    const s = { score: this.score, time: this.time, cleared: this.cleared, mode: this.mode, newBest: this.score > store.best, newBestTime: this.time > store.bestTime };
-    if (s.newBest) store.best = this.score; if (s.newBestTime) store.bestTime = this.time; if (s.newBest || s.newBestTime) save();
+    const r = (store.records[this.runKey] ??= { best: 0, bestTime: 0, cleared: 0, combo: 0 });
+    const s = { score: this.score, time: this.time, cleared: this.cleared, mode: this.mode, key: this.runKey, newBest: this.score > r.best, newBestTime: this.time > r.bestTime, record: r };
+    if (s.newBest) r.best = this.score; if (s.newBestTime) r.bestTime = this.time; r.cleared = Math.max(r.cleared, this.cleared); r.combo = Math.max(r.combo, this.maxCombo);
+    store.best = Math.max(store.best, this.score); store.bestTime = Math.max(store.bestTime, this.time); save();
     return s;
   }
 }

@@ -50,3 +50,20 @@ button { font:inherit; font-weight:900; color:#fff; border:0; cursor:pointer; te
 .newbest { animation-name:bounce2; }
 @keyframes bounce2 { from{transform:scale(1)} to{transform:scale(1.15)} }
 @media (max-width:420px) { .hint span:first-child { display:none; } .card { border-radius:20px; } }
+
+/* ---- select screen ---- */
+.select { flex-direction:column; gap:10px; background:rgba(10,14,40,.15); backdrop-filter:none; --cw:min(68vw,300px); --gap:16px; }
+.select h2 { margin:0; font-size:clamp(24px,6vw,44px); font-weight:900; text-shadow:var(--shadow); }
+.carousel { width:100%; overflow:hidden; padding:12px 0; }
+.track { display:flex; gap:var(--gap); transition:transform .35s cubic-bezier(.2,.8,.2,1); will-change:transform; }
+.bcard { flex:0 0 var(--cw); width:var(--cw); border-radius:24px; border:3px solid rgba(255,255,255,.3); background:linear-gradient(var(--sky),var(--ground)); padding:12px; text-align:center; opacity:.45; transform:scale(.82); transition:transform .35s, opacity .35s; box-shadow:0 10px 30px rgba(0,0,0,.35); pointer-events:auto; }
+.bcard.near { opacity:.7; }
+.bcard.on { opacity:1; transform:scale(1); border-color:#fff; background:none; } /* hole: the live scene (robot idling, camera orbiting) shows through */
+.bcard .info { background:rgba(20,28,60,.75); border-radius:16px; padding:8px 6px 6px; margin-top:8px; }
+.bcard .window { height:clamp(120px,28vh,220px); border-radius:16px; background:rgba(0,0,0,.18); }
+.bcard.on .window { background:transparent; box-shadow:inset 0 0 0 2px rgba(255,255,255,.35); } /* the live scene shows through the highlighted card */
+.bcard .name { font-size:clamp(20px,4.5vw,30px); font-weight:900; text-shadow:var(--shadow); }
+.bcard .tag { font-size:clamp(12px,2.6vw,16px); font-weight:700; opacity:.9; min-height:2.4em; }
+.bcard .rec { font-size:clamp(12px,2.6vw,16px); font-weight:800; font-variant-numeric:tabular-nums; color:#ffe27a; }
+.bcard .bar { height:6px; border-radius:3px; background:rgba(0,0,0,.3); margin-top:8px; opacity:0; transition:opacity .2s; overflow:hidden; }
+.bcard .bar div { height:100%; width:0; background:#4ff0ff; }

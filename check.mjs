@@ -51,7 +51,8 @@ for (const key of (opt('keys') ?? '').split(',').filter(Boolean)) {
 if (args.includes('--touch')) {
   const probe = async label => { const r = await send('Runtime.evaluate', { expression: `JSON.stringify({ready:!!bolt.game.ready,state:bolt.game.state,y:+bolt.game.player.y.toFixed(2),duck:bolt.game.player.ducking,grounded:bolt.game.player.grounded})`, returnByValue: true }); lines.push(`[touch:${label}] ${r?.result?.value}`); };
   await tap(200, 450); await sleep(500); await probe('after unlock tap');
-  await tap(200, 450); await sleep(500); await probe('after start tap');
+  await tap(200, 450); await sleep(500); await probe('after menu tap (select screen)');
+  await tap(206, 460); await sleep(800); await probe('after pick tap');
   await sleep(6000); await probe('after countdown');
   await tap(200, 450, 250); await sleep(150); await probe('during hold-jump');
   await sleep(2500); await swipeDown(200, 300); await probe('at swipe end (duck held until release)');

@@ -29,7 +29,7 @@ export const CONFIG = {
   MILESTONE: 100,        // Points between chime + confetti.
   DAY_CYCLE_POINTS: 700, // Points per phase change (day → sunset → night → dawn).
   DAY_LERP_TIME: 4,      // s to blend between lighting phases.
-  STORAGE_KEY: 'boltrunner.v1', // localStorage key (bump the version to reset saves).
+  STORAGE_KEY: 'boltrunner.v2', // localStorage key (bump the version to reset saves).
 
   // ---- Obstacles -----------------------------------------------------------
   GAP_FACTOR: 1.4,       // Min spacing = GAP_FACTOR × speed × airtime → always clearable.

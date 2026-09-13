@@ -9,7 +9,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { CONFIG as C } from './config.js';
 import { makeSharedMaterials } from './textures.js';
-import { BIOMES, buildBiomeSync, disposeBiome } from './biomes/index.js';
+import { BIOMES, BIOME_IDS, buildBiome, buildBiomeSync, disposeBiome } from './biomes/index.js';
+import { Select } from './select.js';
 import { World } from './world.js';
 import { Particles } from './fx.js';
 import { Game } from './game.js';
@@ -37,13 +38,17 @@ const params = new URLSearchParams(location.search); world.phaseOffset = +(param
 await progress(35, 'Painting the world…');
 let biome = null;
 // Swap the whole environment. Everything the old biome owned is disposed; renderer.info.memory must return to the same numbers.
-function switchBiome(id) {
-  const next = buildBiomeSync(BIOMES[id], shared), old = biome;
-  world.setBiome(next, !old); game.setBiome(next); biome = next;
+function applyBiome(next) {
+  const old = biome; world.setBiome(next, !old); game.setBiome(next); biome = next;
   if (old) disposeBiome(old);
   renderer.toneMappingExposure = next.def.lighting.exposure; bloom.threshold = next.def.lighting.bloomThreshold; // per-biome, not global
-  hud.biome(next.def);
-  return next;
+  hud.biome(next.def); return next;
+}
+const switchBiome = id => applyBiome(buildBiomeSync(BIOMES[id], shared)); // synchronous (startup, debug)
+// Chunked build on idle time: one generator step per idle callback so the frame never stalls. Resolves with the built instance.
+const idle = fn => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 120 }) : setTimeout(fn, 0));
+function prepareBiome(id, onProgress) {
+  return new Promise(res => { const gen = buildBiome(BIOMES[id], shared); let n = 0; const step = () => { const r = gen.next(); onProgress?.(Math.min(1, ++n / 9)); if (r.done) res(r.value); else idle(step); }; step(); });
 }
 const fx = new Particles(scene, shared.textures.dot);
 const audio = new AudioEngine();
@@ -93,10 +98,12 @@ export function applyFov(base) {
   camera.fov = a >= C.MIN_ASPECT_FOV ? base : THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(base / 2)) * C.MIN_ASPECT_FOV / a));
   camera.updateProjectionMatrix();
 }
+let orbitT = 0;
 function updateCamera(dt) {
   const p = game.player, norm = Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START)));
   const narrow = Math.max(0, 1 - camera.aspect); // portrait: pull the framing toward the robot so it is not cut off at the left edge
-  camTarget.set(C.CAMERA_POS[0] + narrow * 3, C.CAMERA_POS[1] + p.y * 0.25, C.CAMERA_POS[2] + narrow * 2); lookTarget.set(C.CAMERA_LOOK[0] - narrow * 4, C.CAMERA_LOOK[1] + p.y * 0.35, C.CAMERA_LOOK[2]);
+  if (game.state === 'SELECT') { orbitT += dt * 0.22; camTarget.set(Math.cos(orbitT) * 6.5, 2.0 + narrow, Math.sin(orbitT) * 6.5); lookTarget.set(0, 0.2 - narrow * 0.6, 0); } // select screen: slow orbit around the idle robot
+  else { camTarget.set(C.CAMERA_POS[0] + narrow * 3, C.CAMERA_POS[1] + p.y * 0.25, C.CAMERA_POS[2] + narrow * 2); lookTarget.set(C.CAMERA_LOOK[0] - narrow * 4, C.CAMERA_LOOK[1] + p.y * 0.35, C.CAMERA_LOOK[2]); }
   const k = 1 - Math.exp(-C.CAMERA_SPRING * dt);
   camPos.lerp(camTarget, k); camLook.lerp(lookTarget, k);
   shake = Math.max(0, shake - dt);
@@ -134,6 +141,28 @@ addEventListener('resize', resize); resize();
   else if (store.quality && TIERS.includes(store.quality)) setQuality(store.quality);
   else { let tier = guessTier(); if (tier !== 'low') { const fps = await probeFps(tier); if (fps < 30) tier = 'low'; else if (fps < 50 && tier === 'high') tier = 'medium'; } setQuality(tier); }
 }
+// ---- Select screen ---------------------------------------------------------------------------------------------
+let highlightToken = 0;
+const select = new Select({
+  onHighlight(card) { // build the highlighted biome behind the card's progress bar; a later highlight cancels this one
+    const id = card.id === 'journey' ? BIOME_IDS[0] : card.id === 'surprise' ? BIOME_IDS[(Math.random() * BIOME_IDS.length) | 0] : card.id;
+    if (biome?.def.id === id) { select.progress(1); return; }
+    const token = ++highlightToken; select.progress(0);
+    prepareBiome(id, p => { if (token === highlightToken) select.progress(p); }).then(inst => { if (token === highlightToken) { applyBiome(inst); select.progress(1); } else disposeBiome(inst); });
+  },
+  async onPick(card) {
+    if (card.id === 'surprise' || card.id === 'journey') game.runKey = card.id; else game.runKey = card.id;
+    store.biome = card.id; save();
+    const want = card.id === 'journey' ? BIOME_IDS[0] : card.id === 'surprise' ? biome.def.id : card.id;
+    if (biome?.def.id !== want) applyBiome(await prepareBiome(want));
+    game.journey = card.id === 'journey'; game.startRun(); audio.uiClick();
+  },
+  onBack() { game.setState('MENU'); audio.uiClick(); },
+});
+game.select = select; select.i = Math.max(0, CARDS_INDEX(store.biome));
+function CARDS_INDEX(id) { return [...BIOME_IDS, 'surprise', 'journey'].indexOf(id); }
+game.on('state', s => { select.show(s === 'SELECT', store); hud.show(s !== 'SELECT'); if (s === 'SELECT') orbitT = Math.PI * 0.35; });
+
 hud.el.quality.onclick = () => { // Auto → High → Medium → Low → Auto
   const i = autoQuality ? -1 : TIERS.indexOf(quality); const next = i + 1;
   if (next >= TIERS.length) { autoQuality = true; store.quality = null; save(); setQuality(guessTier()); } else { autoQuality = false; setQuality(TIERS[next], true); }

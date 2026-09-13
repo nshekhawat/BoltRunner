@@ -29,11 +29,11 @@ export const hud = {
   mode(m) { el.mode.textContent = m === 'kid' ? 'Kid mode' : 'Normal mode'; el.mode.classList.toggle('on', m === 'kid'); },
   quality(q, auto) { el.quality.textContent = `Quality: ${auto ? 'Auto (' + q + ')' : q[0].toUpperCase() + q.slice(1)}`; },
   muted(m) { el.mute.textContent = m ? '🔇' : '🔊'; },
-  end(v, s, best) { // s = { score, time, cleared, newBest, newBestTime }
+  end(v, s) { // s = { score, time, cleared, newBest, newBestTime, record } (record = this biome's bests, already updated)
     el.end.hidden = !v; if (!v) return;
     el.encourage.textContent = LINES[lineIdx++ % LINES.length];
     el.newbest.hidden = !(s.newBest || s.newBestTime);
     el.eScore.textContent = pad5(s.score); el.eTime.textContent = fmtTime(s.time); el.eCleared.textContent = s.cleared;
-    el.eBestS.textContent = s.newBest ? '★ best!' : `best ${pad5(best.best)}`; el.eBestT.textContent = s.newBestTime ? '★ longest!' : `best ${fmtTime(best.bestTime)}`;
+    el.eBestS.textContent = s.newBest ? '★ best!' : `best ${pad5(s.record.best)}`; el.eBestT.textContent = s.newBestTime ? '★ longest!' : `best ${fmtTime(s.record.bestTime)}`;
   },
 };

@@ -23,6 +23,8 @@ import { Settings } from './settings.js';
 import { HC } from './textures.js';
 import { setPalette } from './obstacles.js';
 import { PALETTES } from './palettes.js';
+import { PAINTS, TOPPERS, TRAILS, UNLOCKS, unlocked, nextUnlock, labelOf } from './cosmetics.js';
+import { STICKERS, earned } from './stickers.js';
 
 const loadBar = document.getElementById('loadbar'), loadText = document.getElementById('loadtext');
 const progress = (pct, text) => { loadBar.style.width = pct + '%'; loadText.textContent = text; return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); };
@@ -106,7 +108,8 @@ let orbitT = 0;
 function updateCamera(dt) {
   const p = game.player, norm = Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START)));
   const narrow = Math.max(0, 1 - camera.aspect); // portrait: pull the framing toward the robot so it is not cut off at the left edge
-  if (game.state === 'SELECT') { orbitT += dt * 0.22; camTarget.set(Math.cos(orbitT) * 6.5, 2.0 + narrow, Math.sin(orbitT) * 6.5); lookTarget.set(0, 0.2 - narrow * 0.6, 0); } // select screen: slow orbit around the idle robot
+  if (photo) { camTarget.set(Math.cos(photoA) * 7 * camDist, photoH, Math.sin(photoA) * 7 * camDist); lookTarget.set(0, 1.0 + p.y * 0.5, 0); }
+  else if (game.state === 'SELECT') { orbitT += dt * 0.22; camTarget.set(Math.cos(orbitT) * 6.5, 2.0 + narrow, Math.sin(orbitT) * 6.5); lookTarget.set(0, 0.2 - narrow * 0.6, 0); } // select screen: slow orbit around the idle robot
   else { camTarget.set((C.CAMERA_POS[0] + narrow * 3) * camDist, (C.CAMERA_POS[1] + p.y * 0.25) * camDist, (C.CAMERA_POS[2] + narrow * 2) * camDist); lookTarget.set(C.CAMERA_LOOK[0] - narrow * 4, C.CAMERA_LOOK[1] + p.y * 0.35, C.CAMERA_LOOK[2]); }
   const k = 1 - Math.exp(-C.CAMERA_SPRING * dt);
   camPos.lerp(camTarget, k); camLook.lerp(lookTarget, k);
@@ -208,6 +211,10 @@ const settings = new Settings({
       case 'touchLayout': document.body.classList.toggle('hand-left', v === 'left'); document.body.classList.toggle('hand-right', v !== 'left'); break;
       case 'holdSensitivity': C.JUMP_MIN_HEIGHT = { short: 0.6, normal: 1.0, long: 1.6 }[v] ?? 1.0; break;
       case 'sessionMinutes': game.sessionLimit = v * 60; break;
+      case 'ghost': game.ghostOn = v; break;
+      case 'paint': game.robot.setPaint(unlocked('paint', v, store.lifetime.distance) ? v : 'silver'); break;
+      case 'topper': game.robot.setTopper(unlocked('topper', v, store.lifetime.distance) ? v : 'ball'); break;
+      case 'trail': game.robot.setTrail(unlocked('trail', v, store.lifetime.distance) ? v : 'biome'); break;
     }
   },
   close() { settings.show(false); audio.uiClick(); },
@@ -227,6 +234,32 @@ game.on('mute', () => settings.set('mute', !settings.s.mute)); // M key / speake
   else if (settings.s.quality !== 'auto') { autoQuality = false; setQuality(settings.s.quality); }
   else await autoTier();
 }
+// ---- My robot (cosmetics) + sticker book + photo mode ----------------------------------------------------------------
+const robotCard = document.getElementById('robotcard'), robotBody = robotCard.querySelector('.body'), robotBar = document.getElementById('robotbar');
+function renderRobotCard() {
+  const D = store.lifetime.distance, row = (kind, items, cur) => `<div class="row"><div class="lbl">${{ paint: 'Paint', topper: 'Antenna topper', trail: 'Trail' }[kind]}</div><div class="ctl">${Object.entries(items).map(([id, it]) => { const ok = unlocked(kind, id, D), u = UNLOCKS.find(x => x.kind === kind && x.id === id); return `<button class="pill ${id === cur ? 'on' : ''} ${ok ? '' : 'lock'}" data-kind="${kind}" data-id="${id}" ${ok ? '' : 'disabled'}>${ok ? '' : '🔒 '}${typeof it === 'string' ? it : it.label}${ok ? '' : ` · ${u.at.toLocaleString()} m`}</button>`; }).join('')}</div></div>`;
+  robotBody.innerHTML = row('paint', PAINTS, settings.s.paint) + row('topper', TOPPERS, settings.s.topper) + row('trail', TRAILS, settings.s.trail);
+  const nx = nextUnlock(D); robotBar.querySelector('.txt').textContent = nx ? `Next unlock: ${labelOf(nx)} at ${nx.at.toLocaleString()} m (${D.toLocaleString()} m so far)` : 'Every cosmetic unlocked!'; robotBar.querySelector('.bar div').style.width = nx ? (100 * D / nx.at) + '%' : '100%';
+}
+robotBody.addEventListener('click', e => { const b = e.target.closest('button[data-kind]'); if (!b || b.disabled) return; settings.set(b.dataset.kind, b.dataset.id); renderRobotCard(); audio.uiClick(); });
+document.getElementById('robotbtn').onclick = e => { e.stopPropagation(); renderRobotCard(); robotCard.hidden = false; audio.uiClick(); };
+document.getElementById('robotclose').onclick = () => { robotCard.hidden = true; audio.uiClick(); };
+game.on('state', s => { if (s === 'SELECT') renderRobotCard(); });
+document.getElementById('statsbtn').onclick = () => { hud.stats(true, store.lifetime, store.records, earned(store.lifetime, store.records), STICKERS); audio.uiClick(); };
+document.getElementById('statsclose').onclick = () => { hud.stats(false); audio.uiClick(); };
+game.on('crashed', st => { if (st.newStickers?.length) setTimeout(() => hud.message('⭐ New sticker!', 2, true, true), 1800); });
+// Photo mode: pause → hide the HUD, drag to orbit, save a PNG straight from the canvas.
+let photo = false, photoA = 0.6, photoH = 2.4; const photoBar = document.getElementById('photo');
+function setPhoto(v) { photo = v; document.body.classList.toggle('photo', v); photoBar.hidden = !v; if (v) { hud.pause(false); } else if (game.state === 'PAUSED') hud.pause(true); }
+document.getElementById('photobtn').onclick = e => { e.stopPropagation(); setPhoto(true); audio.uiClick(); };
+document.getElementById('photoback').onclick = e => { e.stopPropagation(); setPhoto(false); audio.uiClick(); };
+document.getElementById('photosave').onclick = e => { e.stopPropagation(); if (quality === 'low') renderer.render(scene, camera); else composer.render(); canvas.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `bolt-runner-${Date.now()}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }); audio.milestone(); };
+addEventListener('pointermove', e => { if (photo && e.buttons) { photoA += e.movementX * 0.01; photoH = THREE.MathUtils.clamp(photoH - e.movementY * 0.02, 0.6, 6); } });
+game.on('state', () => { if (photo) setPhoto(false); });
+// Shield Bubble + power-up feedback
+const bubble = new THREE.Mesh(new THREE.SphereGeometry(1.25, 24, 16), new THREE.MeshStandardMaterial({ color: 0x8fd0ff, emissive: 0x3080ff, emissiveIntensity: 0.6, transparent: true, opacity: 0.28, roughness: 0.2, depthWrite: false })); bubble.visible = false; scene.add(bubble);
+game.on('power', k => { fx.emit(0, 1.4, 0.3, 40, [0xffffff, 0xffe27a, 0x40e8ff], 6, -6, 1); audio.newBest(); }).on('bubblePop', () => { fx.emit(0, 1.2, 0.3, 50, [0x8fd0ff, 0xffffff], 8, -10, 0.8); audio.impact('ice'); });
+
 hud.el.quality.onclick = () => { // Auto → High → Medium → Low → Auto
   const i = autoQuality ? -1 : TIERS.indexOf(quality); const next = i + 1;
   settings.set('quality', next >= TIERS.length ? 'auto' : TIERS[next]); audio.uiClick();
@@ -249,6 +282,10 @@ renderer.setAnimationLoop(now => {
     const br = biome.def.particles.breath; if (br && game.state === 'PLAYING') { breathT += dt; if (breathT > br.every) { breathT = 0; fx.emit(0.4, game.player.y + 1.55, 0.3, 5, br.colors, 0.8, 0.6, 0.9, 0.3); } }
     audio.setMood(Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START))), world.cur.stars);
   }
+  if (paused && photo) updateCamera(dt);
+  bubble.visible = game.bubble; if (bubble.visible) { bubble.position.set(0, game.player.y + 0.95, 0); bubble.rotation.y += dt; }
+  if (game.rocket && !paused) fx.emit(-0.5, game.player.y + 0.3, 0.2, 3, [0xff9a3a, 0xffe27a, 0xffffff], 4, 2, 0.4, 0.3);
+  if (world.phaseName === 'night' && game.state === 'PLAYING') game.sawNight = true;
   frames++; fpsT += raw; if (fpsT >= 0.5) { const fps = frames / fpsT, mem = renderer.info.memory; hud.fps(`${Math.round(fps)} FPS · ${quality} · geo ${mem.geometries} tex ${mem.textures} · ${biome.def.id}/${world.phaseName}`); frames = 0; fpsT = 0;
     // Auto-downgrade: sustained low FPS during play drops one tier (never while paused or on the first seconds after a switch).
     if (autoQuality && game.state === 'PLAYING' && fps < C.FPS_DOWNGRADE_BELOW) { lowFpsT += 0.5; if (lowFpsT >= C.FPS_DOWNGRADE_AFTER && quality !== 'low') { setQuality(TIERS[TIERS.indexOf(quality) + 1]); hud.message('Quality → ' + quality, 1.2); lowFpsT = -3; } } else lowFpsT = Math.max(0, lowFpsT);

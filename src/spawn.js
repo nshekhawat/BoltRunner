@@ -14,6 +14,7 @@ export const DEFS = {
   hazard:     { intro: 800,  action: 'fulljump', boxes: [[0, 1.0, 1.2, 2.0]], telegraph: true },
   chaser:     { intro: 1000, action: 'jump',     boxes: [[0, 0.55, 1.1, 1.1]], speedMult: C.CHASER_SPEED_MULT },
   pickup:     { intro: 0,    action: 'pickup',   boxes: [[0, C.PICKUP_HEIGHT, 0.8, 0.9]], pickup: true },
+  power:      { intro: 300,  action: 'pickup',   boxes: [[0, C.PICKUP_HEIGHT, 0.8, 0.9]], pickup: true, power: true }, // rare power-up, same telegraph as the health pickup
 };
 for (const [k, d] of Object.entries(DEFS)) { d.arch ??= k; d.halfW = Math.max(...d.boxes.map(b => b[0] + b[2] / 2)); d.width = Math.max(...d.boxes.map(b => b[0] + b[2] / 2)) - Math.min(...d.boxes.map(b => b[0] - b[2] / 2)); d.height = Math.max(...d.boxes.map(b => b[1] + b[3] / 2)) - (d.fly !== undefined ? Math.min(...d.boxes.map(b => b[1] - b[3] / 2)) : 0); }
 
@@ -82,7 +83,7 @@ export function checkClearable() {
 // Runtime spawner, pure so the fairness tests can drive it for thousands of runs. Tracks the last spawn's position itself.
 export class Spawner {
   constructor(rng = Math.random) { this.rng = rng; this.reset(); }
-  reset() { this.cooldown = 1.2; this.sincePickup = 0; this.count = 0; this.recent = []; this.last = null; }
+  reset() { this.cooldown = 1.2; this.sincePickup = 0; this.sincePower = 0; this.count = 0; this.recent = []; this.last = null; }
   pickType(score) {
     const types = unlockedTypes(score);
     // Freshly unlocked types are favoured so each new obstacle gets introduced clearly; recent repeats are damped.
@@ -92,14 +93,14 @@ export class Spawner {
     return types[types.length - 1];
   }
   // Advance by dt; returns the type to spawn at SPAWN_X now, or null. wantPickup: a pickup would be useful (shields missing).
-  tick(dt, speed, score, wantPickup) {
+  tick(dt, speed, score, wantPickup, wantPower = false) {
     if (this.last) this.last.x -= speed * this.last.mult * dt;
     this.cooldown -= dt; if (this.cooldown > 0) return null;
-    const type = (wantPickup && this.sincePickup >= C.PICKUP_EVERY) ? 'pickup' : this.pickType(score);
+    const type = (wantPickup && this.sincePickup >= C.PICKUP_EVERY) ? 'pickup' : (wantPower && score >= DEFS.power.intro && this.sincePower >= C.POWER_EVERY) ? 'power' : this.pickType(score);
     if (!canSpawn(type, this.last, speed)) return null;
     const d = DEFS[type];
     this.last = { x: C.SPAWN_X, mult: d.speedMult ?? 1, action: d.action }; this.count++;
-    if (d.pickup) this.sincePickup = 0; else { this.sincePickup++; this.recent.push(type); if (this.recent.length > 2) this.recent.shift(); }
+    if (d.power) this.sincePower = 0; else if (d.pickup) this.sincePickup = 0; else { this.sincePickup++; this.sincePower++; this.recent.push(type); if (this.recent.length > 2) this.recent.shift(); }
     this.cooldown = gapTime(this.rng(), speed) - MIN_GAP_TIME; // canSpawn enforces the minimum; this is the random extra
     return type;
   }

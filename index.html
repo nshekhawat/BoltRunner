@@ -23,6 +23,7 @@
   <div id="shields"></div>
   <div id="score"><div id="scorenum">00000</div><div id="combo"></div></div>
   <div id="fps" hidden></div>
+  <div id="powerring" hidden><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="25" class="track"/><circle id="powerarc" cx="30" cy="30" r="25" class="arc"/></svg><span id="powericon"></span></div>
   <div id="message"></div>
   <button id="mutebtn" class="icon" aria-label="Mute">🔊</button>
   <button id="duckbtn" class="touchbtn" aria-label="Duck">DUCK ⬇</button>
@@ -35,6 +36,7 @@
       <button id="modebtn" class="pill">Kid mode</button>
       <button id="qualitybtn" class="pill">Quality: Auto</button>
       <button id="settingsbtn" class="pill">⚙️ Settings</button>
+      <button id="statsbtn" class="pill">⭐ Stickers</button>
     </div>
     <p class="best">Best <b id="bestscore">00000</b> &nbsp;·&nbsp; Longest <b id="besttime">00:00.00</b></p>
     <p class="hint"><span>⌨️ SPACE / ↑ jump &nbsp; ↓ duck</span><span>👆 tap jump &nbsp; 👇 swipe down duck</span></p>
@@ -44,9 +46,13 @@
   <h2>Choose your world</h2>
   <div class="carousel"><div class="track"></div></div>
   <p class="prompt">← → to browse · SPACE or tap to go</p>
-  <button id="backbtn" class="pill">Back</button>
+  <div class="row"><button id="backbtn" class="pill">Back</button><button id="robotbtn" class="pill">🤖 My robot</button></div>
+  <div id="robotbar"><div class="txt"></div><div class="bar"><div></div></div></div>
 </div>
-<div id="pause" class="overlay" hidden><div class="card"><h2>Paused</h2><p class="prompt">Press P, SPACE or tap to resume</p><div class="row"><button id="pausesettings" class="pill">⚙️ Settings</button></div></div></div>
+<div id="pause" class="overlay" hidden><div class="card"><h2>Paused</h2><p class="prompt">Press P, SPACE or tap to resume</p><div class="row"><button id="pausesettings" class="pill">⚙️ Settings</button><button id="photobtn" class="pill">📷 Photo</button></div></div></div>
+<div id="robotcard" class="overlay" hidden><div class="card settings"><h2>My robot</h2><div class="body"></div><button id="robotclose" class="big">Done</button></div></div>
+<div id="stats" class="overlay" hidden><div class="card settings"><h2>Sticker book</h2><div class="body" id="statsbody"></div><button id="statsclose" class="big">Done</button></div></div>
+<div id="photo" hidden><button id="photosave" class="pill">💾 Save photo</button><button id="photoback" class="pill">Back</button><p>Drag to orbit</p></div>
 <div id="settings" class="overlay" hidden>
   <div class="card settings"><h2>Settings</h2><div class="body"></div><button id="settingsclose" class="big">Done</button></div>
 </div>

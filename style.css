@@ -88,3 +88,19 @@ body.touch .touchbtn { display:block; }
 body.hand-right .touchbtn { right:16px; } body.hand-right #mutebtn { right:auto; left:16px; bottom:12px; } body.hand-right #fps { left:80px; }
 body.hand-left .touchbtn { left:16px; }
 body.hc #hud, body.hc .card { text-shadow:0 0 4px #000, 0 2px 0 #000; }
+
+/* ---- progression ---- */
+#powerring { position:absolute; left:50%; top:calc(14px + clamp(30px,6vw,50px)); transform:translateX(-50%); width:56px; height:56px; }
+#powerring svg { width:100%; height:100%; transform:rotate(-90deg); } #powerring .track { fill:rgba(0,0,0,.3); stroke:rgba(255,255,255,.25); stroke-width:6; } #powerring .arc { fill:none; stroke:var(--accent); stroke-width:6; stroke-dasharray:157; stroke-linecap:round; }
+#powericon { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:26px; }
+#robotbar { width:min(80vw,420px); font-size:clamp(12px,2.6vw,15px); font-weight:800; text-align:center; text-shadow:var(--shadow); }
+#robotbar .bar { height:8px; border-radius:4px; background:rgba(0,0,0,.35); overflow:hidden; margin-top:4px; } #robotbar .bar div { height:100%; background:#ffe27a; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; } .chip { background:rgba(255,255,255,.12); border-radius:999px; padding:4px 10px; font-weight:700; font-size:14px; }
+.stickers { display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); gap:8px; }
+.sticker { background:rgba(255,255,255,.08); border-radius:14px; padding:8px 4px; text-align:center; opacity:.45; } .sticker.got { opacity:1; background:rgba(255,226,122,.18); border:2px solid rgba(255,226,122,.6); }
+.sticker span { font-size:30px; display:block; } .sticker small { font-size:11px; font-weight:700; }
+.card.settings .lock { opacity:.5; }
+#settings, #stats, #robotcard { z-index:12; }
+#photo { position:fixed; left:0; right:0; bottom:max(16px,env(safe-area-inset-bottom)); display:flex; gap:10px; justify-content:center; align-items:center; z-index:15; font-weight:800; text-shadow:var(--shadow); }
+#photo[hidden] { display:none; } #photo p { margin:0 8px; }
+body.photo #hud, body.photo .overlay { display:none; }

@@ -53,6 +53,13 @@ export class Obstacles {
     this.sceneL = 0.5; this.plateDark = true; this.plateTarget = new THREE.Color(); this._v2 = new THREE.Vector2(); this._v3 = new THREE.Vector3(); this._px = new Uint8Array(6 * 6 * 4);
     this.pickups = [0, 1].map(() => this.buildPickup());
     for (const g of this.pickups) { g.visible = false; scene.add(g); }
+    // Power-up orb: same recognition layer (plate, rim, beam, bob) with a coloured core and an icon; one instance so two never coexist.
+    this.powerKinds = { shield: { color: 0x4fa0ff, icon: '🛡️' }, magnet: { color: 0xff5a5a, icon: '🧲' }, slowmo: { color: 0xc07dff, icon: '⏳' }, rocket: { color: 0xff9a3a, icon: '🚀' } };
+    for (const k of Object.values(this.powerKinds)) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); x.font = '48px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(k.icon, 32, 36); k.tex = new THREE.CanvasTexture(c); k.tex.colorSpace = THREE.SRGBColorSpace; }
+    this.power = this.buildPickup(); this.power.userData.type = 'power'; this.power.userData.def = DEFS.power; this.power.visible = false; scene.add(this.power);
+    const pc = this.power.getObjectByName('core'); pc.material = injectHC(PICK.core.clone(), 'obstacle'); pc.userData.own = true;
+    const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false })); icon.scale.setScalar(0.62); icon.renderOrder = 14; icon.name = 'icon'; pc.add(icon);
+    this.magnet = false;
     this.reset();
   }
 
@@ -106,14 +113,15 @@ export class Obstacles {
   // Returns the old pools' geometries; the caller disposes them (immediately, or chunked on idle time in Journey).
   setBiome(inst, prebuilt = null) {
     const old = []; if (this.biome?.hcClones) { for (const m of this.biome.hcClones.values()) m.dispose(); this.biome.hcClones.clear(); }
-    for (const [type, list] of Object.entries(this.pools)) if (type !== 'pickup') for (const g of list) { collectGeometries(g, old); this.scene.remove(g); } // pickups persist; only their shell changes
+    for (const [type, list] of Object.entries(this.pools)) if (type !== 'pickup' && type !== 'power') for (const g of list) { collectGeometries(g, old); this.scene.remove(g); } // pickups persist; only their shell changes
     for (const g of this.active) if (g.userData.type !== 'pickup') { collectGeometries(g, old); this.scene.remove(g); }
     this.active = this.active.filter(g => g.userData.type === 'pickup');
     this.biome = inst; this.outlineMat.color.setHex(inst.def.palette.rim); this.rimMat.color.copy(complement(inst.def.palette.sky)); this.beamMat.color.copy(this.rimMat.color); this.setBackgroundLuminance(this.sceneL); this.applyPlate(0);
     const { pools, shells } = prebuilt ?? (() => { const g = this.buildPools(inst); let r; do r = g.next(); while (!r.done); return r.value; })();
     this.pools = pools; for (const list of Object.values(pools)) for (const g of list) this.scene.add(g);
     this.pickups.forEach((p, i) => { const shell = p.getObjectByName('shell'); collectGeometries(shell, old); shell.clear(); shell.add(shells[i]); });
-    this.pools.pickup = this.pickups.filter(p => !p.visible);
+    { const shell = this.power.getObjectByName('shell'); collectGeometries(shell, old); shell.clear(); } // the orb wears no biome shell: the icon is its identity
+    this.pools.pickup = this.pickups.filter(p => !p.visible); this.pools.power = this.power.visible ? [] : [this.power];
     return old;
   }
   // Contrast guarantee. The plate is a light or dark tint of the complement hue depending on what is actually behind the pickup lane:
@@ -152,7 +160,7 @@ export class Obstacles {
   hold(v, exitX) { this.holding = v; if (!v && exitX !== undefined) { this.spawner.last = { x: exitX, mult: 1, action: 'run' }; this.spawner.cooldown = 0.3; } }
   reset() {
     for (const g of this.active) { g.visible = false; this.pools[g.userData.type].push(g); }
-    this.active.length = 0; this.spawner.reset();
+    this.active.length = 0; this.spawner.reset(); this.magnet = false; this.powerActive = false;
   }
   setDifficulty(mode) { this.hitboxScale = C.HITBOX_SCALE[mode]; }
 
@@ -161,12 +169,13 @@ export class Obstacles {
     const u = g.userData; u.t = 0; u.passed = false; u.hit = false; u.phase = 0; u.assisted = false;
     g.position.set(C.SPAWN_X, 0, 0); g.visible = true;
     if (type === 'pickup') this.beamMat.opacity = 0;
+    if (type === 'power') { const kinds = Object.keys(this.powerKinds), k = kinds[(this.spawner.rng() * kinds.length) | 0], K = this.powerKinds[k]; u.kind = k; const core = g.getObjectByName('core'); core.material.emissive.setHex(K.color); core.material.color.setHex(K.color); core.getObjectByName('icon').material.map = K.tex; core.getObjectByName('icon').material.needsUpdate = true; }
     this.active.push(g); return g;
   }
 
   // Fills ev: { passed: n, hit: obstacle|null, pickup: bool, hiss: bool, erupt: bool, beam: bool (a pickup's beam just switched on) }
   update(dt, speed, score, shields, ev, robotBoxes) {
-    ev.passed = 0; ev.hit = null; ev.pickup = false; ev.hiss = false; ev.erupt = false; ev.beam = false;
+    ev.passed = 0; ev.hit = null; ev.pickup = false; ev.power = null; ev.hiss = false; ev.erupt = false; ev.beam = false; (ev.passedTypes ??= []).length = 0;
     const s = this.hitboxScale; this.applyPlate(dt);
     for (let i = this.active.length - 1; i >= 0; i--) {
       const g = this.active[i], u = g.userData, d = u.def, body = g.children[0];
@@ -177,7 +186,8 @@ export class Obstacles {
       if (d.speedMult) body.traverse(o => { if (o.name === 'roll') o.rotation.z -= speed * d.speedMult * dt / (o.userData.r ?? 0.55); });
       body.traverse(o => { if (o.name === 'flicker') o.visible = Math.sin(u.t * 17) + Math.sin(u.t * 5.3) > -0.6; });
       if (d.pickup) { body.position.y = C.PICKUP_HEIGHT + Math.sin(u.t * Math.PI * 2 * 1.2) * 0.12; body.getObjectByName('ring').rotateZ(dt * 2.4); body.getObjectByName('shell').rotation.y += dt * 1.2;
-        PICK.core.emissive.setHex(palette.core).lerp(WHITE, 0.5 + 0.5 * Math.sin(u.t * 6)); // white → core-colour pulse
+        if (!d.power) PICK.core.emissive.setHex(palette.core).lerp(WHITE, 0.5 + 0.5 * Math.sin(u.t * 6)); // white → core-colour pulse
+        if (this.magnet && g.position.x < 9 && g.position.x > C.ROBOT_X) { g.position.x -= (g.position.x - C.ROBOT_X) * Math.min(1, dt * 5); body.position.y = THREE.MathUtils.lerp(body.position.y, 1.0, Math.min(1, dt * 5)); } // Magnet pulls pickups in
         const tt = timeToPlayer(g.position.x, speed), on = tt <= C.PICKUP_BEAM_LEAD; if (on && !u.beamOn) ev.beam = true; u.beamOn = on;
         this.beamMat.opacity = THREE.MathUtils.lerp(this.beamMat.opacity, on && tt > 0 ? 0.55 : 0, Math.min(1, dt * 4)); }
       let dangerous = !d.pickup;
@@ -194,17 +204,17 @@ export class Obstacles {
         for (const b of d.boxes) {
           const bx = g.position.x + b[0], by = b[1], bw = b[2] * s, bh = b[3] * s;
           for (const r of robotBoxes) if (Math.abs(bx - r.cx) < (bw + r.w) / 2 && Math.abs(by - r.cy) < (bh + r.h) / 2) {
-            if (d.pickup) { ev.pickup = true; u.passed = true; g.visible = false; } else { ev.hit = g; u.hit = true; }
+            if (d.power) { ev.power = u.kind; u.passed = true; g.visible = false; } else if (d.pickup) { ev.pickup = true; u.passed = true; g.visible = false; } else { ev.hit = g; u.hit = true; }
             break;
           }
           if (u.hit || u.passed) break;
         }
       }
-      if (!u.passed && !u.hit && !d.pickup && g.position.x + d.halfW < C.ROBOT_X - 0.6) { u.passed = true; ev.passed++; }
+      if (!u.passed && !u.hit && !d.pickup && g.position.x + d.halfW < C.ROBOT_X - 0.6) { u.passed = true; ev.passed++; ev.passedTypes.push(d.arch); }
       if (g.position.x < C.DESPAWN_X || (d.pickup && u.passed)) { g.visible = false; this.active.splice(i, 1); this.pools[u.type].push(g); }
     }
     if (this.holding) { this.spawner.cooldown = Math.max(this.spawner.cooldown, 0.5); if (this.spawner.last) this.spawner.last.x -= speed * this.spawner.last.mult * dt; return; }
-    const type = this.spawner.tick(dt, speed, score, shields < C.SHIELDS_MAX && this.pools.pickup.length > 0);
+    const type = this.spawner.tick(dt, speed, score, shields < C.SHIELDS_MAX && this.pools.pickup.length > 0, this.pools.power.length > 0 && !this.powerActive);
     if (type) this.spawn(type);
   }
 }

@@ -1,6 +1,6 @@
 // DOM HUD + overlays. Everything here is display only; game state lives in game.js.
 const $ = id => document.getElementById(id);
-const el = { score: $('scorenum'), scoreBox: $('score'), combo: $('combo'), timer: $('timer'), shields: $('shields'), msg: $('message'), hud: $('hud'), fps: $('fps'),
+const el = { power: $('powerring'), powerIcon: $('powericon'), powerArc: $('powerarc'), stats: $('stats'), statsBody: $('statsbody'), score: $('scorenum'), scoreBox: $('score'), combo: $('combo'), timer: $('timer'), shields: $('shields'), msg: $('message'), hud: $('hud'), fps: $('fps'),
   menu: $('menu'), pause: $('pause'), end: $('end'), mode: $('modebtn'), quality: $('qualitybtn'), best: $('bestscore'), bestTime: $('besttime'), mute: $('mutebtn'),
   encourage: $('encourage'), newbest: $('newbest'), eScore: $('e-score'), eTime: $('e-time'), eCleared: $('e-cleared'), eBestS: $('e-bests'), eBestT: $('e-bestt'), again: $('againbtn'), menuBtn: $('menubtn') };
 // One fixed heart shape and colour in every biome, white outline so it never vanishes against the sky.
@@ -22,6 +22,15 @@ export const hud = {
   fps(text) { el.fps.textContent = text; },
   toggleFps() { el.fps.hidden = !el.fps.hidden; },
   biome(def) { document.title = `Bolt Runner · ${def.displayName}`; },
+  power(kind, frac = 0) { el.power.hidden = !kind; if (!kind) return; el.powerIcon.textContent = { shield: '🛡️', magnet: '🧲', slowmo: '⏳', rocket: '🚀' }[kind]; el.powerArc.style.strokeDashoffset = String(157 * (1 - frac)); },
+  // Stats + sticker book. L = store.lifetime, R = store.records, stickers = earned list, all = full sticker list.
+  stats(v, L, R, stickers, all) {
+    el.stats.hidden = !v; if (!v) return;
+    const fav = Object.entries(L.biomeRuns).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—', have = new Set(stickers.map(s => s.id));
+    const rows = [['Lifetime distance', `${L.distance.toLocaleString()} m`], ['Runs', L.runs], ['Favourite world', fav], ['Longest combo', L.combo], ['Power-ups grabbed', L.powers], ['Best run', pad5(Math.max(0, ...Object.values(R).map(r => r.best)))]];
+    const cleared = ['small', 'tall', 'wide', 'flyer', 'hazard', 'chaser'].map(t => `<span class="chip">${t} <b>${L.cleared[t] ?? 0}</b></span>`).join('');
+    el.statsBody.innerHTML = `<table class="stats">${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table><h3>Obstacles cleared</h3><div class="chips">${cleared}</div><h3>Stickers ${have.size}/${all.length}</h3><div class="stickers">${all.map(s => `<div class="sticker ${have.has(s.id) ? 'got' : ''}"><span>${have.has(s.id) ? s.emoji : '❔'}</span><small>${s.label}</small></div>`).join('')}</div>`;
+  },
   update(dt) { if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) { el.msg.textContent = ''; el.msg.classList.remove('bounce'); } } },
   // overlays
   menu(v, best, bestTime) { el.menu.hidden = !v; if (v) { el.best.textContent = pad5(best); el.bestTime.textContent = fmtTime(bestTime); } },

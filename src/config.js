@@ -46,6 +46,8 @@ export const CONFIG = {
   PICKUP_EVERY: 12,      // Roughly one health pickup per this many obstacles (only while a shield is missing).
   PICKUP_HEIGHT: 1.2,    // u. Pickup centre height: always in the jump path, never on the ground.
   PICKUP_BEAM_LEAD: 2,   // s before arrival that the vertical light beam telegraphs a pickup.
+  POWER_EVERY: 22,       // Roughly one power-up per this many obstacles (never two at once).
+  POWER_TIME: { shield: 8, magnet: 6, slowmo: 5, rocket: 6 }, // s each power-up lasts.
 
   // ---- Camera --------------------------------------------------------------
   CAMERA_POS: [-3.5, 3.8, 9.5],   // u, chase offset from the robot (behind, above, to the side).

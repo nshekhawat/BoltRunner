@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { CONFIG as C } from './config.js';
 import { DUCK_HEIGHT } from './spawn.js';
+import { PAINTS, TRAILS } from './cosmetics.js';
 
 const rbox = (w, h, d, mat, x = 0, y = 0, z = 0, r = 0.06) => { const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, r), mat); m.position.set(x, y, z); m.castShadow = true; return m; };
 const sphere = (r, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), mat); m.position.set(x, y, z); m.castShadow = true; return m; };
@@ -52,7 +53,21 @@ export class Robot {
     this._tmp = new THREE.Vector3();
   }
 
-  setAccent(emissive, trailColor) { this.eyes[0].material.emissive.setHex(emissive); this.trailColor.setHex(trailColor); }
+  setAccent(emissive, trailColor) { this.eyes[0].material.emissive.setHex(emissive); this.biomeTrail = trailColor; if (!this.trailStyle?.color && !this.trailStyle?.rainbow) this.trailColor.setHex(trailColor); }
+  // Cosmetics (see cosmetics.js). Paint edits the shared metal material; the topper replaces the antenna tip; the trail overrides the biome colour.
+  setPaint(id) { const P = PAINTS[id] ?? PAINTS.silver, M = this.legs[0].userData.knee.children[0].material; M.color.setHex(P.color); M.metalness = P.metalness; M.roughness = P.roughness; }
+  setTopper(id) {
+    if (this.topper) { this.antenna.remove(this.topper); this.topper.traverse(o => o.geometry?.dispose()); }
+    const M = this.ball.material, D = this.legs[0].children[0].material; let t;
+    if (id === 'star') { const sh = new THREE.Shape(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 0.05 : 0.11, a = i * Math.PI / 5 - Math.PI / 2; i ? sh.lineTo(Math.cos(a) * r, Math.sin(a) * r) : sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); } t = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.03, bevelEnabled: false }), new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0xffa000, emissiveIntensity: 0.8 })); t.position.set(0, 0.36, -0.015); }
+    else if (id === 'propeller') { t = new THREE.Group(); const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.05, 8), D); t.add(hub); for (const r of [0, Math.PI / 2]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.015, 0.05), new THREE.MeshStandardMaterial({ color: 0xff5a1a })); b.rotation.y = r; t.add(b); } t.position.y = 0.32; t.userData.spin = true; }
+    else if (id === 'flame') { t = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 8), new THREE.MeshStandardMaterial({ color: 0xffb020, emissive: 0xff5000, emissiveIntensity: 2.5 })); t.position.y = 0.4; t.userData.flame = true; }
+    else { t = new THREE.Mesh(new THREE.SphereGeometry(0.06, 18, 14), M); t.position.y = 0.32; }
+    this.topper = t; this.antenna.add(t); this.ball.visible = false;
+  }
+  setTrail(id) { this.trailStyle = TRAILS[id] ?? TRAILS.biome; if (this.trailStyle.color) this.trailColor.setHex(this.trailStyle.color); else if (!this.trailStyle.rainbow && this.biomeTrail) this.trailColor.setHex(this.biomeTrail); }
+  // Ghost: same rig, translucent clones of the materials, no trail.
+  static ghost(shared) { const g = {}; for (const k of ['robotMetal', 'robotAccent', 'robotDark', 'robotEye']) { g[k] = shared[k].clone(); g[k].transparent = true; g[k].opacity = 0.3; g[k].depthWrite = false; } const r = new Robot(g); r.trail.visible = false; r.group.position.set(-0.9, 0, -1.6); return r; }
 
   boxes(y, ducking, scale) {
     const b = this._boxes, x = C.ROBOT_X;
@@ -103,6 +118,7 @@ export class Robot {
     head.rotation.y = s.mode === 'idle' ? -this.glance : THREE.MathUtils.lerp(head.rotation.y, 0, dt * 6); // glance toward the camera
     head.rotation.x = s.mode === 'run' ? -0.05 : 0;
     this.ball.position.z = Math.sin(-this.antenna.rotation.x) * 0.1;
+    if (this.topper) { if (this.topper.userData.spin) this.topper.rotation.y += dt * (6 + s.speed * 0.8); if (this.topper.userData.flame) this.topper.scale.y = 0.8 + 0.4 * Math.abs(Math.sin(this.time * 23)); }
     // Blink (also while running: robots blink too)
     this.blink -= dt; if (this.blink <= 0) { this.blinkT = 0.14; this.blink = 2.5 + Math.random() * 3; }
     this.blinkT = Math.max(0, this.blinkT - dt); const eyeS = this.blinkT > 0 ? 0.15 : 1; this.eyes.forEach(e => e.scale.set(1, 1, eyeS));
@@ -119,6 +135,7 @@ export class Robot {
     // Push the current back-foot position at the head of the ribbon.
     const foot = this.legs[0].userData.foot; foot.getWorldPosition(this._tmp);
     const head = pts.pop(); head.x = this._tmp.x; head.y = Math.max(0.05, this._tmp.y); pts.unshift(head); // recycle, no allocation
+    if (this.trailStyle?.rainbow) this.trailColor.setHSL((this.time * 0.25) % 1, 1, 0.6);
     const col = this.trailColor, on = (moving ? 1 : 0) * this.trailBright;
     for (let i = 0; i < TRAIL_N; i++) {
       const a = (1 - i / TRAIL_N) ** 2 * on * 0.55, w = 0.03 + 0.07 * (i / TRAIL_N), p = pts[i], o = i * 6, c = i * 8;

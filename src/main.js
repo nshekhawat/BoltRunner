@@ -13,6 +13,7 @@ import { World } from './world.js';
 import { Particles } from './fx.js';
 import { Game } from './game.js';
 import { hud } from './hud.js';
+import { AudioEngine } from './audio.js';
 
 const loadBar = document.getElementById('loadbar'), loadText = document.getElementById('loadtext');
 const progress = (pct, text) => { loadBar.style.width = pct + '%'; loadText.textContent = text; return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); };
@@ -33,6 +34,7 @@ await progress(55, 'Polishing the robot…');
 const game = new Game(scene, mats);
 const params = new URLSearchParams(location.search); world.phaseOffset = +(params.get('phase') ?? 0); // debug: ?phase=2 starts at night
 const fx = new Particles(scene, mats.textures.dot);
+const audio = new AudioEngine();
 await progress(70, 'Bouncing light around…');
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; pmrem.dispose();
@@ -77,17 +79,28 @@ function updateCamera(dt) {
 
 // ---- Effects hooks ----------------------------------------------------------------
 const SPARK = [0xffd060, 0xff8a30, 0xfff0a0], CONFETTI = [0xff5c8a, 0x40e8ff, 0xffe27a, 0x7dff7a, 0xc07dff];
-game.on('hit', () => { shake = C.SHAKE_TIME; fx.emit(0.2, 1.1, 0.3, 40, SPARK, 9, -30, 0.7); })
-    .on('milestone', () => fx.emit(0, 1.5, 0.2, 60, CONFETTI, 7, -12, 1.4))
-    .on('pickup', () => fx.emit(0, 1.4, 0.3, 30, [0x7dff7a, 0xfff27a], 5, -6, 0.9))
-    .on('land', () => fx.emit(0, 0.05, 0.2, 8, [0xe8d0a0, 0xd0b080], 3, -8, 0.5, 0.4))
-    .on('erupt', () => { const v = game.obstacles.active.find(o => o.userData.type === 'vent' && o.userData.phase === 2); if (v) fx.emit(v.position.x, 0.5, 0, 30, [0xffffff, 0xe0f0ff], 4, 3, 1.2, 0.3); })
-    .on('state', s => console.log('state', s)).on('crashed', s => console.log('crashed', JSON.stringify(s)));
+game.on('hit', () => { shake = C.SHAKE_TIME; fx.emit(0.2, 1.1, 0.3, 40, SPARK, 9, -30, 0.7); audio.shieldLost(); })
+    .on('milestone', () => { fx.emit(0, 1.5, 0.2, 60, CONFETTI, 7, -12, 1.4); audio.milestone(); })
+    .on('pickup', () => { fx.emit(0, 1.4, 0.3, 30, [0x7dff7a, 0xfff27a], 5, -6, 0.9); audio.pickup(); })
+    .on('land', () => { fx.emit(0, 0.05, 0.2, 8, [0xe8d0a0, 0xd0b080], 3, -8, 0.5, 0.4); audio.land(); })
+    .on('erupt', () => { const v = game.obstacles.active.find(o => o.userData.type === 'vent' && o.userData.phase === 2); if (v) fx.emit(v.position.x, 0.5, 0, 30, [0xffffff, 0xe0f0ff], 4, 3, 1.2, 0.3); audio.erupt(); })
+    .on('jump', () => audio.jump()).on('duck', () => audio.duck()).on('step', s => audio.step(s)).on('clang', () => audio.clang()).on('hiss', () => audio.hiss())
+    .on('countdown', i => audio.countdown(i)).on('mute', () => audio.toggleMute())
+    .on('state', s => { if (s === 'PLAYING') audio.startMusic(); else if (s === 'CRASHED' || s === 'MENU') audio.stopMusic(); console.log('state', s); })
+    .on('crashed', s => console.log('crashed', JSON.stringify(s)));
+
+// Browsers block audio until a gesture: keep the loading card up as a "tap to start" screen until then.
+const loading = document.getElementById('loading');
+function firstGesture(e) {
+  e.stopImmediatePropagation(); audio.unlock(); game.ready = true; loading.classList.add('done');
+  removeEventListener('keydown', firstGesture, true); removeEventListener('pointerdown', firstGesture, true);
+}
 
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; applyFov(C.FOV_BASE); }
 addEventListener('resize', resize); resize();
-await progress(100, 'Ready!');
-hud.show(true); document.getElementById('loading').classList.add('done');
+await progress(100, 'Tap or press SPACE to start');
+hud.show(true); loading.classList.add('ready');
+addEventListener('keydown', firstGesture, true); addEventListener('pointerdown', firstGesture, true);
 
 let last = performance.now(), frames = 0, fpsT = 0;
 renderer.setAnimationLoop(now => {
@@ -97,6 +110,7 @@ renderer.setAnimationLoop(now => {
     game.update(dt);
     world.update(dt, game.speed, game.score); game.robot.trailBright = world.trailBright;
     fx.update(dt, game.speed); updateCamera(dt);
+    audio.setMood(Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START))), world.cur.stars);
   }
   frames++; fpsT += raw; if (fpsT >= 0.5) { hud.fps(Math.round(frames / fpsT) + ' FPS · ' + quality); frames = 0; fpsT = 0; }
   if (quality === 'low') renderer.render(scene, camera); else composer.render();

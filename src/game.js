@@ -31,6 +31,7 @@ export class Game {
   resume() { if (this.state === 'PAUSED') { this.state = this.pausedFrom; this.emit('state', this.state); } }
 
   jumpPressed() {
+    if (!this.ready) return; // audio not unlocked yet: the start screen swallows the first gesture
     switch (this.state) {
       case 'MENU': this.startRun(); break;
       case 'CRASHED': if (this.stateTime > 1.2) this.startRun(); break;
@@ -42,7 +43,7 @@ export class Game {
     const JUMP = new Set(['Space', 'ArrowUp', 'KeyW']), DUCK = new Set(['ArrowDown', 'KeyS']);
     addEventListener('keydown', e => {
       if (JUMP.has(e.code)) { e.preventDefault(); if (!e.repeat) this.jumpPressed(); }
-      else if (DUCK.has(e.code)) { e.preventDefault(); this.player.setDuck(true); }
+      else if (DUCK.has(e.code)) { e.preventDefault(); if (!e.repeat && this.state === 'PLAYING') this.emit('duck'); this.player.setDuck(true); }
       else if (e.code === 'KeyP' || e.code === 'Escape') this.state === 'PAUSED' ? this.resume() : this.pause();
       else if (e.code === 'KeyF') hud.toggleFps();
       else if (e.code === 'KeyM') this.emit('mute');
@@ -53,7 +54,7 @@ export class Game {
     let startY = 0, swiped = false;
     const canvas = document.getElementById('game');
     canvas.addEventListener('pointerdown', e => { if (e.target.closest?.('button,select')) return; startY = e.clientY; swiped = false; this.jumpPressed(); });
-    addEventListener('pointermove', e => { if (e.buttons && !swiped && e.clientY - startY > 40) { swiped = true; this.player.releaseJump(); this.player.setDuck(true); } });
+    addEventListener('pointermove', e => { if (e.buttons && !swiped && e.clientY - startY > 40) { swiped = true; this.player.releaseJump(); this.player.setDuck(true); if (this.state === 'PLAYING') this.emit('duck'); } });
     addEventListener('pointerup', () => { this.player.releaseJump(); this.player.setDuck(false); });
     addEventListener('pointercancel', () => { this.player.releaseJump(); this.player.setDuck(false); });
     addEventListener('blur', () => this.pause());

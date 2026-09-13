@@ -1,5 +1,5 @@
 // Headless smoke test via Chrome DevTools Protocol. No deps (Node ≥22 has fetch + WebSocket).
-// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed"] [--size=W,H]
+// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu]
 import { spawn, execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);

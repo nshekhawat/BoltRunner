@@ -36,7 +36,7 @@ export default {
       parrot: [0xff3030, 0x30a0ff, 0xffd020].map(c => std({ color: c, roughness: 0.7 })), beak: std({ color: 0x303030, roughness: 0.6 }),
       shroom: std({ color: 0xe0d0a0, roughness: 0.8 }), shroomCap: std({ color: 0xd04060, roughness: 0.7 }), spores: ctx.basic({ color: 0xb0ff80, transparent: true, opacity: 0.5, depthWrite: false }),
       boulder: std({ map: stoneMap, normalMap: stoneNormal, color: 0x9a9080, roughness: 1 }),
-      crystal: std({ color: 0x80ffd0, emissive: 0x30c090, emissiveIntensity: 0.5, transparent: true, opacity: 0.5, roughness: 0.2, metalness: 0.1 }),
+      crystal: std({ color: 0x80ffd0, emissive: 0x30c090, emissiveIntensity: 0.5, roughness: 0.2, metalness: 0.1 }),
       vine: std({ color: 0x60ff60, emissive: 0x30c030, emissiveIntensity: 1.2, roughness: 0.6 }), firefly: std({ color: 0xffffa0, emissive: 0xffff60, emissiveIntensity: 3 }),
     };
   },
@@ -85,9 +85,9 @@ export default {
       const plume = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.6, 1.55, 10, 1, true), M.spores); plume.position.y = 1.22; plume.name = 'plume'; plume.userData.noOutline = true; g.add(plume); return g; } },
     chaser: { impact: 'stone', makeMesh: (ctx, M) => { const { prim: P, THREE } = ctx, g = P.group(), r = P.group(); r.name = 'roll'; r.position.y = 0.55; const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1), M.boulder); b.castShadow = true; r.add(b); g.add(r); return g; } },
   },
-  pickup: { makePickupShell: (ctx, M) => { const { prim: P, THREE } = ctx, g = P.group(); // crystal seed pod wrapped in glowing vines; fireflies orbit it
-    const pod = new THREE.Mesh(new THREE.OctahedronGeometry(0.62, 0), M.crystal); pod.userData.noOutline = true; g.add(pod);
-    const vine = new THREE.Mesh(new THREE.TorusKnotGeometry(0.55, 0.035, 60, 6, 2, 3), M.vine); vine.userData.noOutline = true; g.add(vine);
+  pickup: { makePickupShell: (ctx, M) => { const { prim: P, THREE } = ctx, g = P.group(); // crystal petals around the core, wrapped in a glowing vine; fireflies orbit it
+    for (let i = 0; i < 4; i++) { const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), M.crystal); c.scale.set(0.5, 1.6, 0.5); c.position.set(Math.cos(i * 1.57) * 0.76, 0, Math.sin(i * 1.57) * 0.76); c.rotation.z = Math.cos(i * 1.57) * 0.4; c.rotation.x = -Math.sin(i * 1.57) * 0.4; c.userData.noOutline = true; g.add(c); }
+    const vine = new THREE.Mesh(new THREE.TorusKnotGeometry(0.74, 0.03, 60, 6, 2, 3), M.vine); vine.userData.noOutline = true; g.add(vine);
     for (let i = 0; i < 3; i++) { const f = P.sphere(0.045, M.firefly, Math.cos(i * 2.1) * 0.85, Math.sin(i * 1.3) * 0.4, Math.sin(i * 2.1) * 0.85, 6); f.userData.noOutline = true; g.add(f); } return g; } },
   audio: { musicPreset: 'jungle', ambientBed: 'jungle', impactTimbre: 'wood', footstepTimbre: 'soft' },
   robotAccent: { emissive: 0x7dff7a, trailColor: 0x9dff8a },

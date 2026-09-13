@@ -58,6 +58,7 @@ export class World {
     else { this.from = toState(this.cur); this.to = target; this.blend = 0; }
   }
   phaseIndex() { return (((this.cycle ?? 0) + this.phaseOffset + this.biome.def.startPhase) % 4 + 4) % 4; }
+  jumpToPhase(i) { this.phase = i; this.cur = toState(this.biome.def.dayNight[i]); this.from = toState(this.cur); this.to = toState(this.cur); this.blend = 1; this.applyState(); } // debug: no blend
   get phaseName() { return ['dawn', 'noon', 'dusk', 'night'][this.phase]; }
 
   setPhase(i) {

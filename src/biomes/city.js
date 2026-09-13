@@ -38,7 +38,7 @@ export default {
       trolley: std({ map: ST.metalMap, roughnessMap: ST.metalRough, color: 0xc0c4cc, roughness: 1, metalness: 0.9, wireframe: true }), trolleyBody: std({ color: 0xc0c4cc, transparent: true, opacity: 0.35, roughness: 0.5, metalness: 0.8 }),
       wheel: std({ color: 0x202020, roughness: 0.8 }),
       light: { red: std({ color: 0xff2020, emissive: 0xff2020, emissiveIntensity: 2 }), amber: std({ color: 0xffb020, emissive: 0xffb020, emissiveIntensity: 2 }), green: std({ color: 0x20ff60, emissive: 0x20ff60, emissiveIntensity: 2 }), off: std({ color: 0x202020, roughness: 0.6 }) },
-      cube: std({ color: 0x20243a, emissive: 0xff3fb0, emissiveIntensity: 0.4, roughness: 0.3, metalness: 0.6, transparent: true, opacity: 0.6 }),
+      neonFrame: std({ color: 0xff3fb0, emissive: 0xff3fb0, emissiveIntensity: 1.6, roughness: 0.4 }),
       trace: ctx.basic({ color: 0x40f0ff, transparent: true, opacity: 0.9, blending: 2 }),
       puddleLight: ctx.basic({ color: 0xff3fb0, transparent: true, opacity: 0.25, depthWrite: false, blending: 2 }),
     };
@@ -86,10 +86,10 @@ export default {
       for (const [x, z] of [[-0.4, -0.25], [0.4, -0.25], [-0.4, 0.25], [0.4, 0.25]]) { const w = P.cyl(0.11, 0.11, 0.08, M.wheel, x, 0.11, z, 10).rotateX(Math.PI / 2); w.name = 'roll'; w.userData.r = 0.11; g.add(w); }
       return g; } },
   },
-  pickup: { makePickupShell: (ctx, M) => { const { prim: P, THREE } = ctx, g = P.group(); // neon-framed power cube; a flickering circuit trace; a puddle of light beneath
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.95, 0.95), M.cube); frame.userData.noOutline = true; g.add(frame);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(frame.geometry), new THREE.LineBasicMaterial({ color: 0xff3fb0 })); g.add(edges);
-    const trace = P.plane(0.5, 0.08, M.trace, 0, 0.2, 0.49); trace.name = 'flicker'; trace.userData.noOutline = true; g.add(trace);
+  pickup: { makePickupShell: (ctx, M) => { const { prim: P } = ctx, g = P.group(); // open neon frame around the core; a flickering circuit trace; a puddle of light beneath
+    const e = 0.5, t = 0.05; for (const [a, b] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { g.add(P.box(2 * e, t, t, M.neonFrame, 0, a * e, b * e), P.box(t, 2 * e, t, M.neonFrame, a * e, 0, b * e), P.box(t, t, 2 * e, M.neonFrame, a * e, b * e, 0)); }
+    for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) g.add(P.box(0.12, 0.12, 0.12, M.droneDark, x * e, y * e, z * e));
+    const trace = P.plane(0.5, 0.08, M.trace, 0, -0.3, e + 0.01); trace.name = 'flicker'; trace.userData.noOutline = true; g.add(trace);
     const pool = P.plane(1.6, 1.6, M.puddleLight, 0, -1.15, 0); pool.rotation.x = -Math.PI / 2; pool.userData.noOutline = true; g.add(pool); return g; } },
   audio: { musicPreset: 'city', ambientBed: 'rain', impactTimbre: 'metal', footstepTimbre: 'wet' },
   robotAccent: { emissive: 0xff40c0, trailColor: 0xff60d0 },

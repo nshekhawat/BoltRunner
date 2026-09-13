@@ -61,7 +61,7 @@ if (args.includes('--touch')) {
 }
 if (opt('js')) await send('Runtime.evaluate', { expression: opt('js') });
 await sleep(secs * 3000 / 4);
-if (opt('eval')) { const r = await send('Runtime.evaluate', { expression: opt('eval'), returnByValue: true }); lines.push(`[eval] ${r?.exceptionDetails ? 'EXCEPTION ' + r.exceptionDetails.exception?.description : JSON.stringify(r?.result?.value)}`); }
+if (opt('eval')) { const r = await send('Runtime.evaluate', { expression: opt('eval'), returnByValue: true, awaitPromise: true }); lines.push(`[eval] ${r?.exceptionDetails ? 'EXCEPTION ' + r.exceptionDetails.exception?.description : JSON.stringify(r?.result?.value)}`); }
 if (opt('shot')) { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(opt('shot'), Buffer.from(r.data, 'base64')); }
 console.log(lines.length ? lines.join('\n') : '(no console output)');
 chrome.kill(); srv.kill(); await sleep(500); execSync(`rm -rf ${PROFILE}`); process.exit(0);

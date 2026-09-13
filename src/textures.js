@@ -69,10 +69,11 @@ export function makeSharedMaterials() {
   const cloudN = makeNoiseTexture(128, { scale: 3, octaves: 3, seed: 77 });
   const cloud = canvasTexture(128, (x, y, u, v) => { const d = Math.hypot(u - 0.5, (v - 0.5) * 2.2), a = Math.max(0, 1 - d * 2) * Math.max(0, cloudN[y * 128 + x] * 1.8 - 0.4); return [255, 255, 255, clamp255(a * 255)]; }, { clamp: true });
   const shaft = canvasTexture(64, (x, y, u, v) => { const a = Math.sin(u * Math.PI) ** 2 * (1 - v) * v * 4; return [255, 240, 200, clamp255(a * 255)]; }, { clamp: true });
+  const disc = canvasTexture(64, (x, y, u, v) => { const d = Math.hypot(u - 0.5, v - 0.5) * 2, a = d < 0.7 ? 1 : Math.max(0, 1 - (d - 0.7) / 0.3); return [255, 255, 255, clamp255(a * a * 255)]; }, { clamp: true }); // halo plate: solid centre, soft rim
   const dot = canvasTexture(32, (x, y, u, v) => { const d = Math.hypot(u - 0.5, v - 0.5) * 2, a = Math.max(0, 1 - d); return [255, 255, 255, clamp255(a * a * 255)]; });
   const streakTex = canvasTexture(32, (x, y, u, v) => { const a = Math.max(0, 1 - Math.abs(u - 0.5) * 6) * Math.sin(v * Math.PI); return [255, 255, 255, clamp255(a * 255)]; });
   return {
-    textures: { cloud, shaft, dot, streak: streakTex, metalMap, metalRough, metalNormal, paintRough, paintNormal },
+    textures: { cloud, shaft, dot, disc, streak: streakTex, metalMap, metalRough, metalNormal, paintRough, paintNormal },
     paint,
     robotMetal: std({ map: metalMap, roughnessMap: metalRough, normalMap: metalNormal, normalScale: new THREE.Vector2(0.4, 0.4), color: 0xd0d6e0, roughness: 1, metalness: 0.9 }),
     robotAccent: std({ map: paint(255, 138, 61, 48), roughnessMap: paintRough, normalMap: paintNormal, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 1, metalness: 0.15 }),

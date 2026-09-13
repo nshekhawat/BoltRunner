@@ -17,7 +17,7 @@ export class Game {
     const dbgMat = new THREE.MeshBasicMaterial({ color: 0x40ff40, wireframe: true });
     this.dbgBoxes = [0, 1, 2].map(() => { const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), dbgMat); m.visible = false; scene.add(m); return m; });
     this.handlers = {}; this.ev = {}; this.mode = store.mode in C.SPEED_CAP ? store.mode : C.DIFFICULTY_DEFAULT;
-    this.state = 'MENU'; this.prevState = 'MENU'; this.stateTime = 0;
+    this.state = 'MENU'; this.prevState = 'MENU'; this.stateTime = 0; this.timeScale = 1; this.slowT = 0; this.tutorialDone = false;
     this.resetRun();
     this.bindInput();
     this.bindMenu();
@@ -45,7 +45,7 @@ export class Game {
       case 'MENU': this.startRun(); break;
       case 'CRASHED': if (this.stateTime > 1.5) this.startRun(); break;
       case 'PAUSED': this.resume(); break;
-      case 'PLAYING': case 'COUNTDOWN': this.player.pressJump(); break;
+      case 'PLAYING': case 'COUNTDOWN': this.player.pressJump(); if (this.slowT > 0) { this.slowT = 0; this.timeScale = 1; hud.message('', 0); } break; // any press skips the tutorial beat
     }
   }
   bindInput() {
@@ -84,6 +84,7 @@ export class Game {
 
   update(dt) {
     this.stateTime += dt; hud.update(dt);
+    if (this.slowT > 0) { this.slowT -= dt; if (this.slowT <= 0) this.timeScale = 1; }
     const p = this.player;
     if (this.state === 'COUNTDOWN') {
       const step = Math.min(3, Math.floor(this.stateTime));
@@ -103,7 +104,8 @@ export class Game {
       this.obstacles.update(dt, this.speed, this.score, this.shields, this.ev, this.invuln > 0 ? NO_BOXES : boxes);
       const ev = this.ev;
       if (ev.passed) { this.combo += ev.passed; this.cleared += ev.passed; hud.combo(this.combo); }
-      if (ev.hiss) this.emit('hiss'); if (ev.erupt) this.emit('erupt'); if (ev.beam) this.emit('beam');
+      if (ev.hiss) this.emit('hiss'); if (ev.erupt) this.emit('erupt');
+      if (ev.beam) { this.emit('beam'); if (!this.tutorialDone) { this.tutorialDone = true; this.slowT = 1.0; this.timeScale = 0.6; hud.message('💙 HEALTH', 1.4, true); this.emit('tutorial'); } } // first-seen beat, once per session
       if (ev.pickup) { this.shields = Math.min(C.SHIELDS_MAX, this.shields + 1); hud.shields(this.shields, C.SHIELDS_MAX); this.emit('pickup'); }
       if (ev.hit) {
         if (this.mode === 'nofail') this.penalty += C.NOFAIL_HIT_COST; else this.shields--; // practice mode: hits only cost score

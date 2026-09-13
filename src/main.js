@@ -16,6 +16,7 @@ import { Game } from './game.js';
 import { hud } from './hud.js';
 import { AudioEngine } from './audio.js';
 import { store, save } from './store.js';
+import { contrastTest } from './debug.js';
 
 const loadBar = document.getElementById('loadbar'), loadText = document.getElementById('loadtext');
 const progress = (pct, text) => { loadBar.style.width = pct + '%'; loadText.textContent = text; return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); };
@@ -112,6 +113,7 @@ game.on('hit', o => { const P = biome.def.particles.impact; shake = C.SHAKE_TIME
     .on('pickup', () => { fx.emit(0, 1.4, 0.3, 30, [0xffffff, 0x40e8ff], 5, -6, 0.9); audio.pickup(); })
     .on('land', () => { fx.emit(0, 0.05, 0.2, 8, biome.def.particles.trail.colors, 3, -8, 0.5, 0.4); audio.land(biome.def.audio.footstepTimbre); })
     .on('erupt', () => { const v = game.obstacles.active.find(o => o.userData.def.telegraph && o.userData.phase === 2); if (v) fx.emit(v.position.x, 0.5, 0, 30, [0xffffff, 0xe0f0ff], 4, 3, 1.2, 0.3); audio.erupt(); })
+    .on('tutorial', () => audio.pickup())
     .on('jump', () => audio.jump()).on('duck', () => audio.duck()).on('step', s => audio.step(s, biome.def.audio.footstepTimbre)).on('hiss', () => audio.hiss())
     .on('countdown', i => audio.countdown(i)).on('mute', () => hud.muted(audio.toggleMute())).on('click', () => audio.uiClick()).on('newbest', () => audio.newBest())
     .on('state', s => { if (s === 'PLAYING') audio.startMusic(); else if (s === 'CRASHED' || s === 'MENU') audio.stopMusic(); console.log('state', s); })
@@ -141,14 +143,15 @@ await progress(100, 'Tap or press SPACE to start');
 hud.show(true); loading.classList.add('ready');
 addEventListener('keydown', firstGesture, true); addEventListener('pointerdown', firstGesture, true);
 
-let last = performance.now(), frames = 0, fpsT = 0, lowFpsT = 0, breathT = 0;
+let last = performance.now(), frames = 0, fpsT = 0, lowFpsT = 0, breathT = 0, bgT = 0;
 renderer.setAnimationLoop(now => {
   const raw = (now - last) / 1000, dt = Math.min(raw, C.MAX_DT); last = now;
   const paused = game.state === 'PAUSED';
   if (!paused) {
-    game.update(dt);
-    world.update(dt, game.speed, game.score); game.robot.trailBright = world.trailBright;
-    fx.update(dt, game.speed); updateCamera(dt);
+    game.update(dt * game.timeScale); // timeScale: tutorial beat / slow-mo. HUD timers inside use the same scaled clock (they are brief).
+    const gdt = dt * game.timeScale;
+    world.update(gdt, game.speed, game.score); game.robot.trailBright = world.trailBright;
+    fx.update(gdt, game.speed); updateCamera(dt);
     const br = biome.def.particles.breath; if (br && game.state === 'PLAYING') { breathT += dt; if (breathT > br.every) { breathT = 0; fx.emit(0.4, game.player.y + 1.55, 0.3, 5, br.colors, 0.8, 0.6, 0.9, 0.3); } }
     audio.setMood(Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START))), world.cur.stars);
   }
@@ -157,6 +160,7 @@ renderer.setAnimationLoop(now => {
     if (autoQuality && game.state === 'PLAYING' && fps < C.FPS_DOWNGRADE_BELOW) { lowFpsT += 0.5; if (lowFpsT >= C.FPS_DOWNGRADE_AFTER && quality !== 'low') { setQuality(TIERS[TIERS.indexOf(quality) + 1]); hud.message('Quality → ' + quality, 1.2); lowFpsT = -3; } } else lowFpsT = Math.max(0, lowFpsT);
   }
   if (quality === 'low') renderer.render(scene, camera); else composer.render();
+  bgT += raw; if (bgT > 1.5 && !paused) { bgT = 0; game.obstacles.measureBackground(renderer, camera); } // pickup contrast plate follows the real background
 });
-window.bolt = { game, world, renderer, scene, setQuality, switchBiome, get biome() { return biome; } }; // debug handle
+window.bolt = { game, world, renderer, scene, camera, setQuality, switchBiome, get biome() { return biome; }, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
 console.log('three', THREE.REVISION);

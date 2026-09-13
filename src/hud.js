@@ -3,6 +3,8 @@ const $ = id => document.getElementById(id);
 const el = { score: $('scorenum'), scoreBox: $('score'), combo: $('combo'), timer: $('timer'), shields: $('shields'), msg: $('message'), hud: $('hud'), fps: $('fps'),
   menu: $('menu'), pause: $('pause'), end: $('end'), mode: $('modebtn'), quality: $('qualitybtn'), best: $('bestscore'), bestTime: $('besttime'), mute: $('mutebtn'),
   encourage: $('encourage'), newbest: $('newbest'), eScore: $('e-score'), eTime: $('e-time'), eCleared: $('e-cleared'), eBestS: $('e-bests'), eBestT: $('e-bestt'), again: $('againbtn'), menuBtn: $('menubtn') };
+// One fixed heart shape and colour in every biome, white outline so it never vanishes against the sky.
+const HEART = '<svg viewBox="0 0 32 30" width="1em" height="1em"><path d="M16 28 C2 18 1 9 6 4.5 C10 1 14.5 3 16 7 C17.5 3 22 1 26 4.5 C31 9 30 18 16 28 Z" fill="var(--heart)" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>';
 export const pad5 = n => String(Math.min(99999, n | 0)).padStart(5, '0');
 export const fmtTime = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}.${String(Math.floor((s * 100) % 100)).padStart(2, '0')}`;
 const LINES = ['You are getting faster every time!', 'That robot is lucky to have you.', 'Great jumping! Ready for one more?', 'The canyon says: come back soon!', 'Bolt is proud of you.', 'So close to a new record!', 'Your reflexes are sparkling ⚡'];
@@ -15,7 +17,7 @@ export const hud = {
   flashScore() { el.scoreBox.classList.remove('flash'); void el.scoreBox.offsetWidth; el.scoreBox.classList.add('flash'); },
   timer(s) { const t = fmtTime(s); if (t !== lastTimer) { el.timer.textContent = t; lastTimer = t; } },
   combo(n) { if (n !== lastCombo) { el.combo.textContent = n >= 2 ? `×${n} combo` : ''; lastCombo = n; } },
-  shields(n, max) { if (n === lastShields) return; lastShields = n; el.shields.innerHTML = Array.from({ length: max }, (_, i) => `<span class="${i < n ? '' : 'lost'}">💙</span>`).join(''); },
+  shields(n, max) { if (n === lastShields) return; lastShields = n; el.shields.innerHTML = Array.from({ length: max }, (_, i) => `<span class="${i < n ? '' : 'lost'}">${HEART}</span>`).join(''); },
   message(text, secs = 1, bounce = false) { el.msg.textContent = text; el.msg.classList.toggle('bounce', bounce); msgTimer = secs; },
   fps(text) { el.fps.textContent = text; },
   toggleFps() { el.fps.hidden = !el.fps.hidden; },

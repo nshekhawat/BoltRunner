@@ -52,6 +52,8 @@ export class Robot {
     this._tmp = new THREE.Vector3();
   }
 
+  setAccent(emissive, trailColor) { this.eyes[0].material.emissive.setHex(emissive); this.trailColor.setHex(trailColor); }
+
   boxes(y, ducking, scale) {
     const b = this._boxes, x = C.ROBOT_X;
     if (ducking) { Object.assign(b[0], { cx: x, cy: y + 0.55, w: 0.9 * scale, h: 0.45 * scale }); Object.assign(b[1], { cx: x, cy: y + 0.2, w: 0.7 * scale, h: 0.4 * scale }); Object.assign(b[2], { cx: x, cy: y + DUCK_HEIGHT - 0.15, w: 0.6 * scale, h: 0.3 * scale }); }

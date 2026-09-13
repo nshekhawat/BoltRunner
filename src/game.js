@@ -9,10 +9,10 @@ import { store, save } from './store.js';
 
 const NO_BOXES = []; // shared empty list while invulnerable (no per-frame allocation)
 export class Game {
-  constructor(scene, mats) {
-    this.scene = scene; this.player = new Player();
-    this.robot = new Robot(mats); scene.add(this.robot.group, this.robot.trail);
-    this.obstacles = new Obstacles(scene, mats);
+  constructor(scene, shared) {
+    this.scene = scene; this.player = new Player(); this.biome = null;
+    this.robot = new Robot(shared); scene.add(this.robot.group, this.robot.trail);
+    this.obstacles = new Obstacles(scene, shared);
     // DEBUG_HITBOXES: wireframes for the robot's three body boxes (obstacle boxes live in obstacles.js).
     const dbgMat = new THREE.MeshBasicMaterial({ color: 0x40ff40, wireframe: true });
     this.dbgBoxes = [0, 1, 2].map(() => { const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), dbgMat); m.visible = false; scene.add(m); return m; });
@@ -23,13 +23,15 @@ export class Game {
     this.bindMenu();
   }
   setMode(m) { this.mode = m; store.mode = m; save(); hud.mode(m); this.obstacles.setDifficulty(m); }
+  // Swap the environment: obstacle art, pickup shell and robot accent follow the biome. Physics does not.
+  setBiome(inst) { this.biome = inst; this.obstacles.setBiome(inst); this.robot.setAccent(inst.def.robotAccent.emissive, inst.def.robotAccent.trailColor); }
   on(name, fn) { this.handlers[name] = fn; return this; }
   emit(name, a) { this.handlers[name]?.(a); }
 
   resetRun() {
     this.player.reset(); this.obstacles.reset(); this.obstacles.setDifficulty(this.mode);
     this.speed = 0; this.distance = 0; this.score = 0; this.time = 0; this.shields = C.SHIELDS_MAX;
-    this.combo = 0; this.cleared = 0; this.invuln = 0; this.nextMilestone = C.MILESTONE; this.hitFlash = 0; this.beatBest = false;
+    this.combo = 0; this.cleared = 0; this.penalty = 0; this.invuln = 0; this.nextMilestone = C.MILESTONE; this.hitFlash = 0; this.beatBest = false;
     hud.score(0); hud.timer(0); hud.shields(this.shields, C.SHIELDS_MAX); hud.combo(0);
   }
   setState(s) { this.prevState = this.state; this.state = s; this.stateTime = 0; hud.menu(s === 'MENU', store.best, store.bestTime); hud.pause(s === 'PAUSED'); if (s !== 'CRASHED') hud.end(false); this.emit('state', s); }
@@ -91,7 +93,7 @@ export class Game {
     if (this.state === 'PLAYING') {
       this.speed = Math.min(this.speedCap, this.speed + C.SPEED_ACCEL * dt);
       this.distance += this.speed * dt; this.time += dt;
-      this.score = Math.floor(this.distance * C.POINTS_PER_UNIT);
+      this.score = Math.max(0, Math.floor(this.distance * C.POINTS_PER_UNIT) - this.penalty);
       if (this.score >= this.nextMilestone) { this.nextMilestone += C.MILESTONE; hud.flashScore(); this.emit('milestone', this.score); }
       if (!this.beatBest && store.best > 0 && this.score > store.best) { this.beatBest = true; hud.message('NEW BEST!', 1.6, true); this.emit('newbest'); }
       const e = p.update(dt); if (e.jumped) this.emit('jump'); if (e.landed) this.emit('land');
@@ -101,16 +103,17 @@ export class Game {
       this.obstacles.update(dt, this.speed, this.score, this.shields, this.ev, this.invuln > 0 ? NO_BOXES : boxes);
       const ev = this.ev;
       if (ev.passed) { this.combo += ev.passed; this.cleared += ev.passed; hud.combo(this.combo); }
-      if (ev.clang) this.emit('clang'); if (ev.hiss) this.emit('hiss'); if (ev.erupt) this.emit('erupt');
+      if (ev.hiss) this.emit('hiss'); if (ev.erupt) this.emit('erupt'); if (ev.beam) this.emit('beam');
       if (ev.pickup) { this.shields = Math.min(C.SHIELDS_MAX, this.shields + 1); hud.shields(this.shields, C.SHIELDS_MAX); this.emit('pickup'); }
       if (ev.hit) {
-        this.shields--; this.combo = 0; this.invuln = C.INVULN_TIME; this.hitFlash = C.INVULN_TIME;
+        if (this.mode === 'nofail') this.penalty += C.NOFAIL_HIT_COST; else this.shields--; // practice mode: hits only cost score
+        this.combo = 0; this.invuln = C.INVULN_TIME; this.hitFlash = C.INVULN_TIME;
         hud.shields(this.shields, C.SHIELDS_MAX); hud.combo(0); this.emit('hit', ev.hit);
         if (this.shields <= 0) { const st = this.stats(); this.setState('CRASHED'); hud.end(true, st, store); this.emit('crashed', st); }
       }
       hud.score(this.score); hud.timer(this.time);
     }
-    if (this.state === 'CRASHED') { this.speed = Math.max(0, this.speed - 30 * dt); this.player.update(dt); this.obstacles.update(dt, this.speed, this.score, this.shields, this.ev, NO_BOXES); }
+    if (this.state === 'CRASHED') { this.speed = Math.max(0, this.speed - 30 * dt); this.player.update(dt); this.obstacles.update(dt, this.speed, this.score, C.SHIELDS_MAX, this.ev, NO_BOXES); }
     const mode = this.state === 'PLAYING' ? (p.grounded ? (p.ducking ? 'duck' : 'run') : 'jump') : this.state === 'CRASHED' ? 'stumble' : this.state === 'COUNTDOWN' ? 'run' : 'idle';
     if (this.robot.update(dt, { mode, y: p.y, vy: p.vy, speed: this.speed, ducking: p.ducking, hitFlash: this.hitFlash, airtime: p.airtime, grounded: p.grounded })) this.emit('step', this.speed);
   }

@@ -19,6 +19,7 @@ export const hud = {
   message(text, secs = 1, bounce = false) { el.msg.textContent = text; el.msg.classList.toggle('bounce', bounce); msgTimer = secs; },
   fps(text) { el.fps.textContent = text; },
   toggleFps() { el.fps.hidden = !el.fps.hidden; },
+  biome(def) { document.title = `Bolt Runner · ${def.displayName}`; },
   update(dt) { if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) { el.msg.textContent = ''; el.msg.classList.remove('bounce'); } } },
   // overlays
   menu(v, best, bestTime) { el.menu.hidden = !v; if (v) { el.best.textContent = pad5(best); el.bestTime.textContent = fmtTime(bestTime); } },

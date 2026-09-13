@@ -7,6 +7,8 @@ const N = { C4: 261.63, D4: 293.66, E4: 329.63, G4: 392, A4: 440, C5: 523.25, D5
 const LEAD = ('C5 . E5 . G5 . E5 . C5 . D5 . E5 . . . ' + 'A4 . C5 . E5 . C5 . A4 . G4 . A4 . . . ' + 'C5 . E5 . G5 . A5 . G5 . E5 . D5 . . . ' + 'E5 . D5 . C5 . D5 . E5 . G5 . E5 . . . ' +
   'G5 . E5 . C5 . E5 . G5 . A5 . G5 . . . ' + 'A5 . G5 . E5 . D5 . C5 . D5 . E5 . . . ' + 'C6 . A5 . G5 . E5 . D5 . E5 . G5 . . . ' + 'E5 . C5 . D5 . E5 . C5 . . . . . . . ').trim().split(/\s+/);
 const BASS_ROOTS = ['C3', 'C3', 'F3', 'F3', 'G3', 'G3', 'A3', 'G3'];
+// Footstep timbres named by biome audio.footstepTimbre.
+const FOOT = { sand: { type: 'highpass', f: 2500, dur: 0.035, g: 0.06 }, wet: { type: 'bandpass', f: 1400, dur: 0.05, g: 0.09, q: 2 }, soft: { type: 'lowpass', f: 900, dur: 0.04, g: 0.08 }, crunch: { type: 'highpass', f: 4000, dur: 0.06, g: 0.09 } };
 
 export class AudioEngine {
   constructor() { this.ctx = null; this.muted = !!store.mute; this.tempoMult = 1; this.filterOpen = 0; this.playing = false; this.stepIdx = 0; this.nextStepTime = 0; this.lastStep = 0; }
@@ -43,16 +45,30 @@ export class AudioEngine {
 
   // ---- SFX ------------------------------------------------------------------------
   jump() { if (!this.ctx) return; this.tone({ type: 'square', f: 300, f2: 720, dur: 0.14, g: 0.12 }); this.noise({ type: 'bandpass', f: 900, f2: 2400, dur: 0.18, g: 0.12, q: 0.8 }); }
-  land() { if (!this.ctx) return; this.noise({ type: 'lowpass', f: 420, dur: 0.12, g: 0.35 }); this.tone({ type: 'sine', f: 120, f2: 60, dur: 0.08, g: 0.15 }); }
+  land(foot = 'sand') { if (!this.ctx) return; const F = FOOT[foot] ?? FOOT.sand; this.noise({ type: F.type, f: F.f * 0.6, dur: 0.12, g: 0.35 }); this.tone({ type: 'sine', f: 120, f2: 60, dur: 0.08, g: 0.15 }); }
   duck() { if (!this.ctx) return; this.noise({ type: 'bandpass', f: 2200, f2: 500, dur: 0.14, g: 0.14, q: 1.5 }); }
   shieldLost() { if (!this.ctx) return; this.tone({ type: 'sawtooth', f: 440, f2: 170, dur: 0.38, g: 0.16, lp: 1100, r: 0.2 }); this.noise({ type: 'lowpass', f: 700, dur: 0.2, g: 0.15 }); }
   milestone() { if (!this.ctx) return; [N.C5, N.E5, N.G5].forEach((f, i) => this.tone({ type: 'triangle', f, t: i * 0.09, dur: 0.16, g: 0.16 })); }
   newBest() { if (!this.ctx) return; [N.C5, N.E5, N.G5, N.C6].forEach((f, i) => this.tone({ type: 'triangle', f, t: i * 0.11, dur: i === 3 ? 0.4 : 0.14, g: 0.16 })); }
   pickup() { if (!this.ctx) return; this.tone({ type: 'sine', f: 1320, dur: 0.35, g: 0.18, r: 0.3 }); this.tone({ type: 'sine', f: 2640, dur: 0.25, g: 0.06, r: 0.2 }); }
   countdown(step) { if (!this.ctx) return; step === 3 ? this.tone({ type: 'square', f: 990, dur: 0.28, g: 0.14, r: 0.15 }) : this.tone({ type: 'square', f: 660, dur: 0.09, g: 0.1 }); }
-  step(speed) { if (!this.ctx) return; const k = speed / C.SPEED_START; this.noise({ type: 'highpass', f: 2500 * k, dur: 0.035, g: 0.06 }); this.tone({ type: 'sine', f: 150 * k, f2: 80 * k, dur: 0.04, g: 0.07 }); }
-  clang() { if (!this.ctx) return; [400, 620, 1150, 1830].forEach((f, i) => this.tone({ type: 'sine', f, dur: 0.5 - i * 0.08, g: 0.07, r: 0.35 })); this.noise({ type: 'highpass', f: 3000, dur: 0.06, g: 0.1 }); }
-  hiss() { if (!this.ctx) return; this.noise({ type: 'highpass', f: 3500, dur: C.VENT_TELEGRAPH, g: 0.1, a: 0.25 }); }
+  step(speed, foot = 'sand') { if (!this.ctx) return; const k = speed / C.SPEED_START, F = FOOT[foot] ?? FOOT.sand; this.noise({ type: F.type, f: F.f * k, dur: F.dur, g: F.g, q: F.q ?? 1 }); this.tone({ type: 'sine', f: 150 * k, f2: 80 * k, dur: 0.04, g: 0.07 }); }
+  // Impact timbre per obstacle (biome data names one of these): what you hit sounds like what it is made of.
+  impact(kind) {
+    if (!this.ctx) return;
+    switch (kind) {
+      case 'metal': [400, 620, 1150, 1830].forEach((f, i) => this.tone({ type: 'sine', f, dur: 0.5 - i * 0.08, g: 0.07, r: 0.35 })); this.noise({ type: 'highpass', f: 3000, dur: 0.06, g: 0.1 }); break;
+      case 'wood': case 'thud': this.tone({ type: 'triangle', f: 180, f2: 90, dur: 0.16, g: 0.2 }); this.noise({ type: 'lowpass', f: 600, dur: 0.1, g: 0.2 }); break;
+      case 'stone': this.noise({ type: 'lowpass', f: 900, f2: 200, dur: 0.18, g: 0.25 }); this.tone({ type: 'square', f: 90, f2: 50, dur: 0.1, g: 0.1, lp: 300 }); break;
+      case 'ice': case 'crack': this.noise({ type: 'highpass', f: 2600, dur: 0.09, g: 0.18 }); [1900, 2900, 4100].forEach((f, i) => this.tone({ type: 'sine', f, t: i * 0.02, dur: 0.12, g: 0.06 })); break;
+      case 'flap': this.noise({ type: 'bandpass', f: 500, f2: 1200, dur: 0.2, g: 0.16, q: 0.8 }); break;
+      case 'rustle': this.noise({ type: 'bandpass', f: 3000, f2: 1500, dur: 0.25, g: 0.14, q: 0.5 }); break;
+      case 'steam': case 'splash': this.noise({ type: 'lowpass', f: 1200, f2: 300, dur: 0.3, g: 0.18 }); break;
+      case 'plastic': this.tone({ type: 'square', f: 260, f2: 140, dur: 0.1, g: 0.12, lp: 900 }); break;
+      default: this.noise({ type: 'lowpass', f: 700, dur: 0.15, g: 0.2 });
+    }
+  }
+  hiss() { if (!this.ctx) return; this.noise({ type: 'highpass', f: 3500, dur: C.HAZARD_TELEGRAPH, g: 0.1, a: 0.25 }); }
   erupt() { if (!this.ctx) return; this.noise({ type: 'lowpass', f: 900, f2: 250, dur: 0.5, g: 0.22 }); }
   uiClick() { if (!this.ctx) return; this.tone({ type: 'square', f: 880, dur: 0.05, g: 0.06 }); }
 

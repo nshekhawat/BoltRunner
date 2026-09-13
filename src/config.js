@@ -12,13 +12,14 @@ export const CONFIG = {
   // ---- Speed / difficulty --------------------------------------------------
   SPEED_START: 12,       // u/s scroll speed at the start of a run.
   SPEED_ACCEL: 0.30,     // u/s gained per second of play.
-  SPEED_CAP: { kid: 26, normal: 34 }, // u/s. The promise: hard, never impossible.
+  SPEED_CAP: { kid: 26, normal: 34, nofail: 26 }, // u/s. The promise: hard, never impossible. nofail = practice: hits only cost score.
   DIFFICULTY_DEFAULT: 'kid',
 
   // ---- Forgiveness (Kid mode) ---------------------------------------------
   COYOTE_TIME: 0.120,    // s. Jump still fires shortly after running off the ground.
   INPUT_BUFFER: 0.150,   // s. Jump pressed just before landing fires on touchdown.
-  HITBOX_SCALE: { kid: 0.8, normal: 0.9 }, // Collision boxes as a fraction of visual size.
+  HITBOX_SCALE: { kid: 0.8, normal: 0.9, nofail: 0.8 }, // Collision boxes as a fraction of visual size.
+  NOFAIL_HIT_COST: 25,   // Points lost per hit in No-Fail practice mode.
   INVULN_TIME: 0.5,      // s of invulnerability (flashing) after a hit.
   SHIELDS_MAX: 3,        // Hearts. Hit = lose one; zero = run ends.
 
@@ -39,10 +40,11 @@ export const CONFIG = {
   ROBOT_X: 0,            // Robot's fixed world x.
   ROBOT_TURN: 0.45,      // rad the robot is turned toward the camera (0 = pure side view, for the 3/4 look).
   POOL_PER_TYPE: 6,      // Pre-allocated meshes per obstacle type.
-  WHEEL_SPEED_BONUS: 1.25,      // Rolling wheel moves at scroll speed × this.
-  VENT_TELEGRAPH: 0.6,   // s of hissing before a steam vent erupts.
-  VENT_ERUPT: 1.2,       // s the vent stays dangerous.
-  BATTERY_EVERY: 12,     // Roughly one battery pickup per this many obstacles.
+  CHASER_SPEED_MULT: 1.15, // Chaser archetype (tumbleweed, trolley, boulder, snowball) moves at scroll speed × this.
+  HAZARD_TELEGRAPH: 0.6, // s of warning (hiss/rumble) before a hazard erupts.
+  PICKUP_EVERY: 12,      // Roughly one health pickup per this many obstacles (only while a shield is missing).
+  PICKUP_HEIGHT: 1.2,    // u. Pickup centre height: always in the jump path, never on the ground.
+  PICKUP_BEAM_LEAD: 2,   // s before arrival that the vertical light beam telegraphs a pickup.
 
   // ---- Camera --------------------------------------------------------------
   CAMERA_POS: [-3.5, 3.8, 9.5],   // u, chase offset from the robot (behind, above, to the side).

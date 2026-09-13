@@ -3,19 +3,19 @@ import { CONFIG as C, AIRTIME } from './config.js';
 
 // Obstacle definitions: what the player must do, and where the hitboxes are (local to the obstacle group).
 // box = [cx, cy, w, h] in world units (y measured from the ground). action: jump | fulljump | duck | run | pickup.
+// Archetype table. Hitboxes, timing and clearance are identical in every biome: a biome only supplies the mesh (see biomes/schema.js).
 export const DEFS = {
-  rock_small:   { intro: 0,    action: 'jump',     boxes: [[0, 0.5, 1.0, 1.0]] },
-  rock_tall:    { intro: 0,    action: 'fulljump', boxes: [[0, 0.9, 1.1, 1.8]] },
-  rock_cluster: { intro: 0,    action: 'fulljump', boxes: [[-1.1, 0.4, 0.9, 0.8], [0, 0.65, 1.0, 1.3], [1.1, 0.4, 0.9, 0.8]] },
-  barrel:       { intro: 150,  action: 'jump',     boxes: [[0, 0.65, 0.9, 1.3]] },
-  fence:        { intro: 350,  action: 'fulljump', boxes: [[0, 0.75, 2.6, 1.5]] },
-  drone_low:    { intro: 550,  action: 'jump',     boxes: [[0, 0.85, 1.2, 0.8]], fly: 0.85 },
-  drone_mid:    { intro: 550,  action: 'duck',     boxes: [[0, 1.95, 1.2, 0.8]], fly: 1.95 },
-  drone_tall:   { intro: 550,  action: 'fulljump', boxes: [[0, 1.45, 1.2, 1.7]], fly: 1.45 },
-  vent:         { intro: 800,  action: 'fulljump',     boxes: [[0, 1.0, 0.9, 2.0]], telegraph: true },
-  wheel:        { intro: 1000, action: 'jump',     boxes: [[0, 0.7, 1.4, 1.4]], speedMult: C.WHEEL_SPEED_BONUS },
-  battery:      { intro: 0,    action: 'pickup',   boxes: [[0, 1.3, 0.8, 1.0]], pickup: true },
+  small:      { intro: 0,    action: 'jump',     boxes: [[0, 0.5, 0.9, 1.0]] },
+  tall:       { intro: 0,    action: 'fulljump', boxes: [[0, 0.95, 0.8, 1.9]] },
+  wide:       { intro: 250,  action: 'fulljump', boxes: [[0, 0.6, 2.4, 1.2]] },
+  flyer_low:  { intro: 500,  action: 'jump',     boxes: [[0, 0.85, 1.0, 0.8]], fly: 0.85, arch: 'flyer' },
+  flyer_mid:  { intro: 500,  action: 'duck',     boxes: [[0, 1.95, 1.0, 0.8]], fly: 1.95, arch: 'flyer' },
+  flyer_tall: { intro: 500,  action: 'fulljump', boxes: [[0, 1.45, 1.0, 0.8]], fly: 1.45, arch: 'flyer' },
+  hazard:     { intro: 800,  action: 'fulljump', boxes: [[0, 1.0, 1.2, 2.0]], telegraph: true },
+  chaser:     { intro: 1000, action: 'jump',     boxes: [[0, 0.55, 1.1, 1.1]], speedMult: C.CHASER_SPEED_MULT },
+  pickup:     { intro: 0,    action: 'pickup',   boxes: [[0, C.PICKUP_HEIGHT, 0.8, 0.9]], pickup: true },
 };
+for (const [k, d] of Object.entries(DEFS)) { d.arch ??= k; d.halfW = Math.max(...d.boxes.map(b => b[0] + b[2] / 2)); d.width = Math.max(...d.boxes.map(b => b[0] + b[2] / 2)) - Math.min(...d.boxes.map(b => b[0] - b[2] / 2)); d.height = Math.max(...d.boxes.map(b => b[1] + b[3] / 2)) - (d.fly !== undefined ? Math.min(...d.boxes.map(b => b[1] - b[3] / 2)) : 0); }
 
 export const HOP_APEX = C.JUMP_MIN_HEIGHT + C.JUMP_CUT_VELOCITY ** 2 / (2 * -C.GRAVITY); // apex of a tapped jump (≈1.6 u)
 export const DUCK_HEIGHT = 1.0;  // u, robot height while ducking (must match robot.js duck hitbox)
@@ -77,6 +77,32 @@ export function checkClearable() {
     if (d.action === 'duck' && bottom < DUCK_HEIGHT * 1.15) problems.push(`${name}: bottom ${bottom} too low to duck under`);
   }
   return problems;
+}
+
+// Runtime spawner, pure so the fairness tests can drive it for thousands of runs. Tracks the last spawn's position itself.
+export class Spawner {
+  constructor(rng = Math.random) { this.rng = rng; this.reset(); }
+  reset() { this.cooldown = 1.2; this.sincePickup = 0; this.count = 0; this.recent = []; this.last = null; }
+  pickType(score) {
+    const types = unlockedTypes(score);
+    // Freshly unlocked types are favoured so each new obstacle gets introduced clearly; recent repeats are damped.
+    const w = types.map(t => { const d = DEFS[t]; let x = 1; if (score - d.intro < 120 && d.intro > 0) x = 4; if (this.recent.includes(t)) x *= 0.35; return x; });
+    let r = this.rng() * w.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < types.length; i++) { r -= w[i]; if (r <= 0) return types[i]; }
+    return types[types.length - 1];
+  }
+  // Advance by dt; returns the type to spawn at SPAWN_X now, or null. wantPickup: a pickup would be useful (shields missing).
+  tick(dt, speed, score, wantPickup) {
+    if (this.last) this.last.x -= speed * this.last.mult * dt;
+    this.cooldown -= dt; if (this.cooldown > 0) return null;
+    const type = (wantPickup && this.sincePickup >= C.PICKUP_EVERY) ? 'pickup' : this.pickType(score);
+    if (!canSpawn(type, this.last, speed)) return null;
+    const d = DEFS[type];
+    this.last = { x: C.SPAWN_X, mult: d.speedMult ?? 1, action: d.action }; this.count++;
+    if (d.pickup) this.sincePickup = 0; else { this.sincePickup++; this.recent.push(type); if (this.recent.length > 2) this.recent.shift(); }
+    this.cooldown = gapTime(this.rng(), speed) - MIN_GAP_TIME; // canSpawn enforces the minimum; this is the random extra
+    return type;
+  }
 }
 
 // Which non-pickup types are unlocked at this score.

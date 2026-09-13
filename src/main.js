@@ -8,7 +8,8 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { CONFIG as C } from './config.js';
-import { makeMaterials } from './textures.js';
+import { makeSharedMaterials } from './textures.js';
+import { BIOMES, buildBiomeSync, disposeBiome } from './biomes/index.js';
 import { World } from './world.js';
 import { Particles } from './fx.js';
 import { Game } from './game.js';
@@ -27,14 +28,23 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(C.FOV_BASE, 1, 0.1, 400);
 
-await progress(10, 'Painting textures…');
-const mats = makeMaterials();
-await progress(35, 'Raising the mesas…');
-const world = new World(scene, mats, camera);
-await progress(55, 'Polishing the robot…');
-const game = new Game(scene, mats);
-const params = new URLSearchParams(location.search); world.phaseOffset = +(params.get('phase') ?? 0); // debug: ?phase=2 starts at night
-const fx = new Particles(scene, mats.textures.dot);
+await progress(10, 'Polishing the robot…');
+const shared = makeSharedMaterials();
+const world = new World(scene, shared, camera);
+const game = new Game(scene, shared);
+const params = new URLSearchParams(location.search); world.phaseOffset = +(params.get('phase') ?? 0); // debug: ?phase=2 starts two phases in
+await progress(35, 'Painting the world…');
+let biome = null;
+// Swap the whole environment. Everything the old biome owned is disposed; renderer.info.memory must return to the same numbers.
+function switchBiome(id) {
+  const next = buildBiomeSync(BIOMES[id], shared), old = biome;
+  world.setBiome(next, !old); game.setBiome(next); biome = next;
+  if (old) disposeBiome(old);
+  renderer.toneMappingExposure = next.def.lighting.exposure; bloom.threshold = next.def.lighting.bloomThreshold; // per-biome, not global
+  hud.biome(next.def);
+  return next;
+}
+const fx = new Particles(scene, shared.textures.dot);
 const audio = new AudioEngine();
 await progress(70, 'Bouncing light around…');
 const pmrem = new THREE.PMREMGenerator(renderer);
@@ -61,6 +71,7 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.4, 0.45, 1.15); // 
 const vignette = new ShaderPass(VignetteShader); vignette.uniforms.offset.value = 0.6; vignette.uniforms.darkness.value = 1.0; // darkness 1 = mix toward black at the corners only; lower values grey out the whole frame
 const smaa = new SMAAPass(); const output = new OutputPass();
 composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(output); composer.addPass(vignette); composer.addPass(smaa);
+switchBiome(params.get('biome') in BIOMES ? params.get('biome') : 'desert');
 const TIERS = ['high', 'medium', 'low'];
 let quality = 'high', autoQuality = !store.quality;
 export function setQuality(q, persist = false) {
@@ -69,7 +80,7 @@ export function setQuality(q, persist = false) {
   bloom.enabled = q === 'high'; renderer.shadowMap.enabled = q !== 'low';
   world.sun.castShadow = q !== 'low'; world.sun.shadow.mapSize.setScalar(q === 'high' ? 2048 : 1024); if (world.sun.shadow.map) { world.sun.shadow.map.dispose(); world.sun.shadow.map = null; }
   scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
-  fx.budget = q === 'low' ? 0.4 : 1; world.dust.visible = q !== 'low'; for (const s of world.shafts) s.visible = q !== 'low';
+  fx.budget = q === 'low' ? 0.4 : 1; for (const s of world.shafts) s.visible = q !== 'low';
   renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'low' ? 1 : C.MAX_PIXEL_RATIO)); resize();
 }
 
@@ -95,13 +106,13 @@ function updateCamera(dt) {
 }
 
 // ---- Effects hooks ----------------------------------------------------------------
-const SPARK = [0xffd060, 0xff8a30, 0xfff0a0], CONFETTI = [0xff5c8a, 0x40e8ff, 0xffe27a, 0x7dff7a, 0xc07dff];
-game.on('hit', () => { shake = C.SHAKE_TIME; fx.emit(0.2, 1.1, 0.3, 40, SPARK, 9, -30, 0.7); audio.shieldLost(); })
+const CONFETTI = [0xff5c8a, 0x40e8ff, 0xffe27a, 0x7dff7a, 0xc07dff];
+game.on('hit', o => { const P = biome.def.particles.impact; shake = C.SHAKE_TIME; fx.emit(0.2, 1.1, 0.3, P.n, P.colors, P.speed, P.gravity, P.life); audio.shieldLost(); audio.impact(biome.def.obstacles[o.userData.def.arch].impact); })
     .on('milestone', () => { fx.emit(0, 1.5, 0.2, 60, CONFETTI, 7, -12, 1.4); audio.milestone(); })
-    .on('pickup', () => { fx.emit(0, 1.4, 0.3, 30, [0x7dff7a, 0xfff27a], 5, -6, 0.9); audio.pickup(); })
-    .on('land', () => { fx.emit(0, 0.05, 0.2, 8, [0xe8d0a0, 0xd0b080], 3, -8, 0.5, 0.4); audio.land(); })
-    .on('erupt', () => { const v = game.obstacles.active.find(o => o.userData.type === 'vent' && o.userData.phase === 2); if (v) fx.emit(v.position.x, 0.5, 0, 30, [0xffffff, 0xe0f0ff], 4, 3, 1.2, 0.3); audio.erupt(); })
-    .on('jump', () => audio.jump()).on('duck', () => audio.duck()).on('step', s => audio.step(s)).on('clang', () => audio.clang()).on('hiss', () => audio.hiss())
+    .on('pickup', () => { fx.emit(0, 1.4, 0.3, 30, [0xffffff, 0x40e8ff], 5, -6, 0.9); audio.pickup(); })
+    .on('land', () => { fx.emit(0, 0.05, 0.2, 8, biome.def.particles.trail.colors, 3, -8, 0.5, 0.4); audio.land(biome.def.audio.footstepTimbre); })
+    .on('erupt', () => { const v = game.obstacles.active.find(o => o.userData.def.telegraph && o.userData.phase === 2); if (v) fx.emit(v.position.x, 0.5, 0, 30, [0xffffff, 0xe0f0ff], 4, 3, 1.2, 0.3); audio.erupt(); })
+    .on('jump', () => audio.jump()).on('duck', () => audio.duck()).on('step', s => audio.step(s, biome.def.audio.footstepTimbre)).on('hiss', () => audio.hiss())
     .on('countdown', i => audio.countdown(i)).on('mute', () => hud.muted(audio.toggleMute())).on('click', () => audio.uiClick()).on('newbest', () => audio.newBest())
     .on('state', s => { if (s === 'PLAYING') audio.startMusic(); else if (s === 'CRASHED' || s === 'MENU') audio.stopMusic(); console.log('state', s); })
     .on('crashed', s => console.log('crashed', JSON.stringify(s)));
@@ -140,11 +151,11 @@ renderer.setAnimationLoop(now => {
     fx.update(dt, game.speed); updateCamera(dt);
     audio.setMood(Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START))), world.cur.stars);
   }
-  frames++; fpsT += raw; if (fpsT >= 0.5) { const fps = frames / fpsT; hud.fps(Math.round(fps) + ' FPS · ' + quality); frames = 0; fpsT = 0;
+  frames++; fpsT += raw; if (fpsT >= 0.5) { const fps = frames / fpsT, mem = renderer.info.memory; hud.fps(`${Math.round(fps)} FPS · ${quality} · geo ${mem.geometries} tex ${mem.textures} · ${biome.def.id}/${world.phaseName}`); frames = 0; fpsT = 0;
     // Auto-downgrade: sustained low FPS during play drops one tier (never while paused or on the first seconds after a switch).
     if (autoQuality && game.state === 'PLAYING' && fps < C.FPS_DOWNGRADE_BELOW) { lowFpsT += 0.5; if (lowFpsT >= C.FPS_DOWNGRADE_AFTER && quality !== 'low') { setQuality(TIERS[TIERS.indexOf(quality) + 1]); hud.message('Quality → ' + quality, 1.2); lowFpsT = -3; } } else lowFpsT = Math.max(0, lowFpsT);
   }
   if (quality === 'low') renderer.render(scene, camera); else composer.render();
 });
-window.bolt = { game, world, renderer, scene, setQuality }; // debug handle
+window.bolt = { game, world, renderer, scene, setQuality, switchBiome, get biome() { return biome; } }; // debug handle
 console.log('three', THREE.REVISION);

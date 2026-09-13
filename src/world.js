@@ -3,12 +3,13 @@
 import * as THREE from 'three';
 import { CONFIG as C } from './config.js';
 import { PHASE } from './biomes/schema.js';
+import { HC, injectHC } from './textures.js';
 
 const COLOR_KEYS = ['top', 'horizon', 'fog', 'sun', 'hemiSky', 'hemiGround', 'cloud'], NUM_KEYS = [...Object.keys(PHASE).filter(k => !COLOR_KEYS.includes(k)), 'aurora']; // aurora is optional in presets (default 0)
 const toState = p => { const s = {}; for (const k of COLOR_KEYS) s[k] = new THREE.Color(p[k]); for (const k of NUM_KEYS) s[k] = p[k] ?? 0; return s; }; // also clones a state
 
 const SKY_VERT = `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`;
-const SKY_FRAG = `uniform vec3 top, horizon, sunColor, sunDir; uniform float stars, aurora, time; varying vec3 vDir;
+const SKY_FRAG = `uniform vec3 top, horizon, sunColor, sunDir; uniform float stars, aurora, time, uDesat; varying vec3 vDir;
 void main(){
   float h = clamp(vDir.y, 0.0, 1.0); vec3 col = mix(horizon, top, pow(h, 0.55));
   float s = max(dot(vDir, sunDir), 0.0); col += sunColor * (pow(s, 700.0) * 3.0 + pow(s, 6.0) * 0.18);
@@ -25,6 +26,7 @@ void main(){
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114))), uDesat);
 }`;
 
 export class World {
@@ -37,10 +39,10 @@ export class World {
     this.hemi = new THREE.HemisphereLight(0xbfdfff, 0xc9915a, 1.0);
     this.eyeLight = new THREE.PointLight(0x40e8ff, 0, 18, 1.5); this.eyeLight.position.set(0.3, 1.7, 0.5);
     scene.add(this.sun, this.sun.target, this.hemi, this.eyeLight);
-    this.skyU = { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, sunColor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, stars: { value: 0 }, aurora: { value: 0 }, time: { value: 0 } };
+    this.skyU = { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, sunColor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, stars: { value: 0 }, aurora: { value: 0 }, time: { value: 0 }, uDesat: HC.desat };
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 16), new THREE.ShaderMaterial({ uniforms: this.skyU, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false }));
     scene.add(this.sky);
-    this.clouds = []; const cg = new THREE.PlaneGeometry(34, 13); this.cloudMat = new THREE.MeshBasicMaterial({ map: this.T.cloud, transparent: true, depthWrite: false, opacity: 0.85, fog: true });
+    this.clouds = []; const cg = new THREE.PlaneGeometry(34, 13); this.cloudMat = injectHC(new THREE.MeshBasicMaterial({ map: this.T.cloud, transparent: true, depthWrite: false, opacity: 0.85, fog: true }));
     for (let i = 0; i < 9; i++) { const m = new THREE.Mesh(cg, this.cloudMat); m.position.set(-100 + i * 26 + (i % 3) * 7, 24 + (i % 4) * 5, -80 - (i % 3) * 18); m.scale.setScalar(0.8 + (i % 3) * 0.3); scene.add(m); this.clouds.push(m); }
     this.shafts = []; const sg = new THREE.PlaneGeometry(7, 46);
     for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ map: this.T.shaft, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.2, fog: false })); m.position.set(-30 + i * 24, 18, -22 - (i % 2) * 8); m.rotation.z = 0.32; scene.add(m); this.shafts.push(m); }

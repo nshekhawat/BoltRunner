@@ -1,7 +1,7 @@
 // Biome loader and disposal. An environment is data: adding a biome = one file + one import in registry.js.
 import * as THREE from 'three';
 import { CONFIG as C } from '../config.js';
-import { canvasTexture, makeNoiseTexture, heightToNormal, fbm, smooth, clamp255, mix } from '../textures.js';
+import { canvasTexture, makeNoiseTexture, heightToNormal, fbm, smooth, clamp255, mix, injectHC } from '../textures.js';
 export { BIOMES, BIOME_IDS } from './registry.js';
 
 const shadowed = m => { m.castShadow = true; m.receiveShadow = true; return m; };
@@ -64,6 +64,7 @@ export function* buildBiome(def, shared) {
   }
   yield;
   for (const A of def.particles.ambient) { const a = makeAmbient(A, shared); inst.ambient.push(a); inst.root.add(a.pts); }
+  inst.root.traverse(o => { if (o.material) for (const m of [].concat(o.material)) injectHC(m, 'scenery'); }); // High-Contrast Mode hook (scenery fades)
   return inst;
 }
 

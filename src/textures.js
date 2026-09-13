@@ -2,6 +2,19 @@
 // Biome-specific textures live in src/biomes/*.js and are built through the ctx these helpers form.
 import * as THREE from 'three';
 
+// ---- High-Contrast Mode ----------------------------------------------------
+// Shared uniforms: scenery materials desaturate by `desat`, obstacle/pickup materials gain `sat` extra saturation. Applied after
+// tone mapping and fog so it works in display space. Programs are shared (same injected source), so toggling costs nothing.
+export const HC = { desat: { value: 0 }, sat: { value: 0 } };
+const HC_GLSL = `
+  vec3 hcLum = vec3(dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114)));
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, hcLum, uDesat);
+  gl_FragColor.rgb = clamp(mix(hcLum, gl_FragColor.rgb, 1.0 + uSat), 0.0, 1.0);`;
+function hcScenery(shader) { shader.uniforms.uDesat = HC.desat; shader.uniforms.uSat = HC.zero; shader.fragmentShader = shader.fragmentShader.replace('void main() {', 'uniform float uDesat, uSat;\nvoid main() {').replace('#include <premultiplied_alpha_fragment>', '#include <premultiplied_alpha_fragment>' + HC_GLSL); }
+function hcObstacle(shader) { shader.uniforms.uDesat = HC.zero; shader.uniforms.uSat = HC.sat; shader.fragmentShader = shader.fragmentShader.replace('void main() {', 'uniform float uDesat, uSat;\nvoid main() {').replace('#include <premultiplied_alpha_fragment>', '#include <premultiplied_alpha_fragment>' + HC_GLSL); }
+HC.zero = { value: 0 };
+export function injectHC(material, kind = 'scenery') { if (material.isShaderMaterial || material.userData.hc) return material; material.userData.hc = kind; material.onBeforeCompile = kind === 'obstacle' ? hcObstacle : hcScenery; material.needsUpdate = true; return material; }
+
 // ---- Noise ----------------------------------------------------------------
 // Deterministic hash → value noise → fBm. Returns Float32Array heights in [0,1].
 const hash = (x, y, seed) => { let h = (x * 374761393 + y * 668265263 + seed * 1442695041) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };

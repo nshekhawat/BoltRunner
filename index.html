@@ -25,6 +25,7 @@
   <div id="fps" hidden></div>
   <div id="message"></div>
   <button id="mutebtn" class="icon" aria-label="Mute">🔊</button>
+  <button id="duckbtn" class="touchbtn" aria-label="Duck">DUCK ⬇</button>
 </div>
 <div id="menu" class="overlay" hidden>
   <div class="card">
@@ -33,6 +34,7 @@
     <div class="row">
       <button id="modebtn" class="pill">Kid mode</button>
       <button id="qualitybtn" class="pill">Quality: Auto</button>
+      <button id="settingsbtn" class="pill">⚙️ Settings</button>
     </div>
     <p class="best">Best <b id="bestscore">00000</b> &nbsp;·&nbsp; Longest <b id="besttime">00:00.00</b></p>
     <p class="hint"><span>⌨️ SPACE / ↑ jump &nbsp; ↓ duck</span><span>👆 tap jump &nbsp; 👇 swipe down duck</span></p>
@@ -44,7 +46,11 @@
   <p class="prompt">← → to browse · SPACE or tap to go</p>
   <button id="backbtn" class="pill">Back</button>
 </div>
-<div id="pause" class="overlay" hidden><div class="card"><h2>Paused</h2><p class="prompt">Press P, SPACE or tap to resume</p></div></div>
+<div id="pause" class="overlay" hidden><div class="card"><h2>Paused</h2><p class="prompt">Press P, SPACE or tap to resume</p><div class="row"><button id="pausesettings" class="pill">⚙️ Settings</button></div></div></div>
+<div id="settings" class="overlay" hidden>
+  <div class="card settings"><h2>Settings</h2><div class="body"></div><button id="settingsclose" class="big">Done</button></div>
+</div>
+<div id="break" class="overlay" hidden><div class="card"><h2>Great running!</h2><p class="prompt">Time for a break 🌟</p><p class="hint"><span>Stretch, drink some water, look far away.</span></p><button id="breakbtn" class="big">I'm back</button></div></div>
 <div id="end" class="overlay" hidden>
   <div class="card">
     <h2>Nice run!</h2>

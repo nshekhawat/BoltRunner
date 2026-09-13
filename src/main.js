@@ -19,6 +19,10 @@ import { hud } from './hud.js';
 import { AudioEngine } from './audio.js';
 import { store, save } from './store.js';
 import { contrastTest } from './debug.js';
+import { Settings } from './settings.js';
+import { HC } from './textures.js';
+import { setPalette } from './obstacles.js';
+import { PALETTES } from './palettes.js';
 
 const loadBar = document.getElementById('loadbar'), loadText = document.getElementById('loadtext');
 const progress = (pct, text) => { loadBar.style.width = pct + '%'; loadText.textContent = text; return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); };
@@ -42,8 +46,8 @@ let biome = null;
 function applyBiome(next, prebuilt = null, deferDispose = false) {
   const old = biome; world.setBiome(next, !old); const oldGeos = game.setBiome(next, prebuilt); biome = next;
   if (old) { const gen = disposeBiomeChunked(old, oldGeos); if (deferDispose) { const step = () => { if (!gen.next().done) idle(step); }; idle(step); } else for (const _ of gen); }
-  renderer.toneMappingExposure = next.def.lighting.exposure; bloom.threshold = next.def.lighting.bloomThreshold; // per-biome, not global
-  hud.biome(next.def); return next;
+  renderer.toneMappingExposure = next.def.lighting.exposure; // per-biome exposure; bloom threshold set below (High-Contrast overrides it)
+  hud.biome(next.def); audio.setBiome(next.def.audio); if (!HC.desat.value) bloom.threshold = next.def.lighting.bloomThreshold; return next;
 }
 const switchBiome = id => applyBiome(buildBiomeSync(BIOMES[id], shared)); // synchronous (startup, debug)
 // Chunked build on idle time: one generator step per idle callback so the frame never stalls. Resolves with the built instance.
@@ -79,15 +83,14 @@ const vignette = new ShaderPass(VignetteShader); vignette.uniforms.offset.value 
 const smaa = new SMAAPass(); const output = new OutputPass();
 composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(output); composer.addPass(vignette); composer.addPass(smaa);
 switchBiome(params.get('biome') in BIOMES ? params.get('biome') : 'desert');
-const TIERS = ['high', 'medium', 'low'];
-let quality = 'high', autoQuality = !store.quality;
+const TIERS = ['high', 'medium', 'low'], motion = { shake: true, reduce: false }; let camDist = 1; // motion: settings (screen shake / reduce motion)
+let quality = 'high', autoQuality = true;
 export function setQuality(q, persist = false) {
-  quality = q; if (persist) { store.quality = q; save(); }
-  hud.quality(q, autoQuality);
+  quality = q; hud.quality(q, autoQuality);
   bloom.enabled = q === 'high'; renderer.shadowMap.enabled = q !== 'low';
   world.sun.castShadow = q !== 'low'; world.sun.shadow.mapSize.setScalar(q === 'high' ? 2048 : 1024); if (world.sun.shadow.map) { world.sun.shadow.map.dispose(); world.sun.shadow.map = null; }
   scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
-  fx.budget = q === 'low' ? 0.4 : 1; for (const s of world.shafts) s.visible = q !== 'low';
+  fx.budget = (q === 'low' ? 0.4 : 1) * (motion.reduce ? 0.5 : 1); for (const s of world.shafts) s.visible = q !== 'low';
   renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'low' ? 1 : C.MAX_PIXEL_RATIO)); resize();
 }
 
@@ -104,14 +107,14 @@ function updateCamera(dt) {
   const p = game.player, norm = Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START)));
   const narrow = Math.max(0, 1 - camera.aspect); // portrait: pull the framing toward the robot so it is not cut off at the left edge
   if (game.state === 'SELECT') { orbitT += dt * 0.22; camTarget.set(Math.cos(orbitT) * 6.5, 2.0 + narrow, Math.sin(orbitT) * 6.5); lookTarget.set(0, 0.2 - narrow * 0.6, 0); } // select screen: slow orbit around the idle robot
-  else { camTarget.set(C.CAMERA_POS[0] + narrow * 3, C.CAMERA_POS[1] + p.y * 0.25, C.CAMERA_POS[2] + narrow * 2); lookTarget.set(C.CAMERA_LOOK[0] - narrow * 4, C.CAMERA_LOOK[1] + p.y * 0.35, C.CAMERA_LOOK[2]); }
+  else { camTarget.set((C.CAMERA_POS[0] + narrow * 3) * camDist, (C.CAMERA_POS[1] + p.y * 0.25) * camDist, (C.CAMERA_POS[2] + narrow * 2) * camDist); lookTarget.set(C.CAMERA_LOOK[0] - narrow * 4, C.CAMERA_LOOK[1] + p.y * 0.35, C.CAMERA_LOOK[2]); }
   const k = 1 - Math.exp(-C.CAMERA_SPRING * dt);
   camPos.lerp(camTarget, k); camLook.lerp(lookTarget, k);
   shake = Math.max(0, shake - dt);
-  const sh = shake > 0 ? C.SHAKE_AMOUNT * (shake / C.SHAKE_TIME) : 0;
+  const sh = shake > 0 && motion.shake && !motion.reduce ? C.SHAKE_AMOUNT * (shake / C.SHAKE_TIME) : 0;
   camera.position.set(camPos.x + (Math.random() - 0.5) * sh, camPos.y + (Math.random() - 0.5) * sh, camPos.z);
   camera.lookAt(camLook);
-  applyFov(C.FOV_BASE + C.FOV_PUSH * norm);
+  applyFov(C.FOV_BASE + (motion.reduce ? 0 : C.FOV_PUSH * norm));
 }
 
 // ---- Effects hooks ----------------------------------------------------------------
@@ -123,7 +126,7 @@ game.on('hit', o => { const P = biome.def.particles.impact; shake = C.SHAKE_TIME
     .on('erupt', () => { const v = game.obstacles.active.find(o => o.userData.def.telegraph && o.userData.phase === 2); if (v) fx.emit(v.position.x, 0.5, 0, 30, [0xffffff, 0xe0f0ff], 4, 3, 1.2, 0.3); audio.erupt(); })
     .on('tutorial', () => audio.pickup())
     .on('jump', () => audio.jump()).on('duck', () => audio.duck()).on('step', s => audio.step(s, biome.def.audio.footstepTimbre)).on('hiss', () => audio.hiss())
-    .on('countdown', i => audio.countdown(i)).on('mute', () => hud.muted(audio.toggleMute())).on('click', () => audio.uiClick()).on('newbest', () => audio.newBest())
+    .on('countdown', i => audio.countdown(i)).on('click', () => audio.uiClick()).on('newbest', () => audio.newBest())
     .on('state', s => { if (s === 'PLAYING') audio.startMusic(); else if (s === 'CRASHED' || s === 'MENU') audio.stopMusic(); console.log('state', s); })
     .on('crashed', s => console.log('crashed', JSON.stringify(s)));
 
@@ -136,12 +139,6 @@ function firstGesture(e) {
 
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; applyFov(C.FOV_BASE); }
 addEventListener('resize', resize); resize();
-{
-  const urlQ = params.get('q');
-  if (urlQ && TIERS.includes(urlQ)) { autoQuality = false; setQuality(urlQ); }
-  else if (store.quality && TIERS.includes(store.quality)) setQuality(store.quality);
-  else { let tier = guessTier(); if (tier !== 'low') { const fps = await probeFps(tier); if (fps < 30) tier = 'low'; else if (fps < 50 && tier === 'high') tier = 'medium'; } setQuality(tier); }
-}
 // ---- Journey ---------------------------------------------------------------------------------------------------
 const journey = new Journey(scene, shared);
 // Shader programs differ between on-screen and render-target output (tone mapping lives in the shader), so compile under the target the tier renders to.
@@ -188,10 +185,51 @@ game.select = select; select.i = Math.max(0, CARDS_INDEX(store.biome));
 function CARDS_INDEX(id) { return [...BIOME_IDS, 'surprise', 'journey'].indexOf(id); }
 game.on('state', s => { select.show(s === 'SELECT', store); hud.show(s !== 'SELECT'); if (s === 'SELECT') orbitT = Math.PI * 0.35; });
 
+// ---- Settings ------------------------------------------------------------------------------------------------------
+let settingsFrom = null;
+async function autoTier() { let tier = guessTier(); if (tier !== 'low') { const fps = await probeFps(tier); if (fps < 30) tier = 'low'; else if (fps < 50 && tier === 'high') tier = 'medium'; } autoQuality = true; setQuality(tier); }
+const settings = new Settings({
+  apply(key, v, initial, S) {
+    switch (key) {
+      case 'difficulty': game.setMode(v); break;
+      case 'jumpAssist': game.jumpAssist = v; break;
+      case 'startSpeed': game.startSpeed = v; break;
+      case 'quality': if (initial) break; if (v === 'auto') autoTier(); else { autoQuality = false; setQuality(v); } break;
+      case 'highContrast': HC.desat.value = v ? 0.6 : 0; HC.sat.value = v ? 0.6 : 0; document.body.classList.toggle('hc', v); bloom.threshold = v ? 3 : biome.def.lighting.bloomThreshold; break; // bloom off for scenery: only the pickup core exceeds 3
+      case 'reduceMotion': motion.reduce = v; fx.budget = (quality === 'low' ? 0.4 : 1) * (v ? 0.5 : 1); break;
+      case 'screenShake': motion.shake = v; break;
+      case 'palette': setPalette(v); document.documentElement.style.setProperty('--heart', PALETTES[v].heart); document.documentElement.style.setProperty('--accent', PALETTES[v].accent); break;
+      case 'showFps': hud.el.fps.hidden = !v; break;
+      case 'cameraDistance': camDist = v; break;
+      case 'mute': audio.setMuted(v); hud.muted(v); break;
+      case 'music': case 'sfx': audio.setVolumes(S.s.music, S.s.sfx); break;
+      case 'ambience': audio.setAmbience(v); break;
+      case 'jumpKey': case 'duckKey': game.setKeys(S.s.jumpKey, S.s.duckKey); break;
+      case 'touchLayout': document.body.classList.toggle('hand-left', v === 'left'); document.body.classList.toggle('hand-right', v !== 'left'); break;
+      case 'holdSensitivity': C.JUMP_MIN_HEIGHT = { short: 0.6, normal: 1.0, long: 1.6 }[v] ?? 1.0; break;
+      case 'sessionMinutes': game.sessionLimit = v * 60; break;
+    }
+  },
+  close() { settings.show(false); audio.uiClick(); },
+  reset() { if (confirm('Reset ALL progress? Records, unlocks and settings will be cleared.')) { try { localStorage.removeItem(C.STORAGE_KEY); } catch { /* blocked storage */ } location.reload(); } },
+});
+game.settings = settings;
+const openSettings = () => { settingsFrom = game.state; if (game.state === 'PLAYING' || game.state === 'COUNTDOWN') game.pause(); settings.show(true); audio.uiClick(); };
+document.getElementById('settingsbtn').onclick = openSettings; document.getElementById('pausesettings').onclick = openSettings;
+game.on('modeChanged', m => settings.set('difficulty', m));
+game.on('closeSettings', () => settings.hooks.close());
+game.on('break', () => { document.getElementById('break').hidden = false; audio.milestone(); });
+document.getElementById('breakbtn').onclick = () => { document.getElementById('break').hidden = true; game.onBreak = false; game.resume(); audio.uiClick(); };
+game.on('mute', () => settings.set('mute', !settings.s.mute)); // M key / speaker icon route through settings so it persists there
+{
+  const urlQ = params.get('q');
+  if (urlQ && TIERS.includes(urlQ)) { autoQuality = false; setQuality(urlQ); }
+  else if (settings.s.quality !== 'auto') { autoQuality = false; setQuality(settings.s.quality); }
+  else await autoTier();
+}
 hud.el.quality.onclick = () => { // Auto → High → Medium → Low → Auto
   const i = autoQuality ? -1 : TIERS.indexOf(quality); const next = i + 1;
-  if (next >= TIERS.length) { autoQuality = true; store.quality = null; save(); setQuality(guessTier()); } else { autoQuality = false; setQuality(TIERS[next], true); }
-  audio.uiClick();
+  settings.set('quality', next >= TIERS.length ? 'auto' : TIERS[next]); audio.uiClick();
 };
 await progress(100, 'Tap or press SPACE to start');
 hud.show(true); loading.classList.add('ready');

@@ -21,6 +21,7 @@ export const CONFIG = {
   HITBOX_SCALE: { kid: 0.8, normal: 0.9, nofail: 0.8 }, // Collision boxes as a fraction of visual size.
   NOFAIL_HIT_COST: 25,   // Points lost per hit in No-Fail practice mode.
   INVULN_TIME: 0.5,      // s of invulnerability (flashing) after a hit.
+  ASSIST_TIME: 0.32,     // s. Jump Assist acts when an obstacle would arrive within this time and the robot is still grounded.
   SHIELDS_MAX: 3,        // Hearts. Hit = lose one; zero = run ends.
 
   // ---- Scoring -------------------------------------------------------------
@@ -56,7 +57,7 @@ export const CONFIG = {
 
   // ---- Audio ---------------------------------------------------------------
   VOLUME: 0.5,           // Default master volume (0..1).
-  MUSIC_BPM: 128,        // Base tempo; nudged up with speed.
+  MUSIC_BPM: 128,        // Fallback tempo; each biome names a music preset in audio.js (tempo, voice, key) nudged up with speed.
 
   // ---- Performance ---------------------------------------------------------
   MAX_PIXEL_RATIO: 2,

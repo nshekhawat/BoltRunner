@@ -26,7 +26,7 @@ export const hud = {
   // overlays
   menu(v, best, bestTime) { el.menu.hidden = !v; if (v) { el.best.textContent = pad5(best); el.bestTime.textContent = fmtTime(bestTime); } },
   pause(v) { el.pause.hidden = !v; },
-  mode(m) { el.mode.textContent = m === 'kid' ? 'Kid mode' : 'Normal mode'; el.mode.classList.toggle('on', m === 'kid'); },
+  mode(m) { el.mode.textContent = { kid: 'Kid mode', normal: 'Normal mode', nofail: 'No-Fail practice' }[m]; el.mode.classList.toggle('on', m === 'kid'); },
   quality(q, auto) { el.quality.textContent = `Quality: ${auto ? 'Auto (' + q + ')' : q[0].toUpperCase() + q.slice(1)}`; },
   muted(m) { el.mute.textContent = m ? '🔇' : '🔊'; },
   end(v, s) { // s = { score, time, cleared, newBest, newBestTime, record } (record = this biome's bests, already updated)

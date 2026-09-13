@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { CONFIG as C } from './config.js';
 import { DEFS, Spawner, checkClearable, leadTime, REQUIRED_LEAD, timeToPlayer } from './spawn.js';
 import { PALETTES } from './palettes.js';
+import { injectHC } from './textures.js';
 
 // Startup assertions: geometry and lead time must be provably fair, not eyeballed.
 {
@@ -29,8 +30,8 @@ const WHITE = new THREE.Color(0xffffff), DARK = new THREE.Color();
 export const VIEW_DIR = new THREE.Vector3(...C.CAMERA_LOOK).sub(new THREE.Vector3(...C.CAMERA_POS)).normalize();
 const PICK = {
   // transparent:true (opacity 1) puts core and ring in the transparent pass so renderOrder can place them above the halo plate.
-  core: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 3, roughness: 0.2, transparent: true }),
-  ring: new THREE.MeshStandardMaterial({ color: 0x9ffcff, emissive: 0x40e8ff, emissiveIntensity: 2.2, roughness: 0.3, metalness: 0.4, transparent: true }),
+  core: injectHC(new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 3, roughness: 0.2, transparent: true }), 'obstacle'),
+  ring: injectHC(new THREE.MeshStandardMaterial({ color: 0x9ffcff, emissive: 0x40e8ff, emissiveIntensity: 2.2, roughness: 0.3, metalness: 0.4, transparent: true }), 'obstacle'),
   coreGeo: new THREE.SphereGeometry(0.27, 20, 14), ringGeo: new THREE.TorusGeometry(0.72, 0.055, 10, 36), knobGeo: new THREE.SphereGeometry(0.1, 8, 6), beamGeo: new THREE.PlaneGeometry(0.7, 60),
 };
 let palette = PALETTES.normal;
@@ -74,6 +75,7 @@ export class Obstacles {
   build(type, inst) {
     const d = DEFS[type], mk = inst.def.obstacles[d.arch].makeMesh, g = new THREE.Group(), body = new THREE.Group(); body.name = 'body';
     const mesh = mk(inst.ctx, inst.M, type); body.add(mesh); g.add(body);
+    this.boostMaterials(mesh, inst); // obstacle-only material clones so High-Contrast Mode can saturate them without touching scenery
     const box = new THREE.Box3().setFromObject(mesh, true), size = box.getSize(new THREE.Vector3());
     const sx = d.width / size.x, sy = d.height / size.y; mesh.scale.set(sx, sy, sx);
     if (d.fly !== undefined) { mesh.position.y = -(box.min.y + box.max.y) / 2 * sy; body.position.y = d.fly; } else mesh.position.y = -box.min.y * sy;
@@ -85,6 +87,10 @@ export class Obstacles {
     return g;
   }
 
+  boostMaterials(root, inst) {
+    const cache = (inst.hcClones ??= new Map());
+    root.traverse(o => { if (!o.isMesh || o.userData.outline) return; let c = cache.get(o.material); if (!c) { c = injectHC(o.material.clone(), 'obstacle'); cache.set(o.material, c); } o.material = c; });
+  }
   // Build the pools for a biome instance. A generator (one archetype per step) so Journey can do it on idle time before the swap.
   *buildPools(inst) {
     const pools = {};
@@ -93,13 +99,13 @@ export class Obstacles {
       for (let i = 0; i < C.POOL_PER_TYPE; i++) { const g = this.build(type, inst); g.visible = false; pools[type].push(g); }
       yield;
     }
-    const shells = this.pickups.map(() => { const s = inst.def.pickup.makePickupShell(inst.ctx, inst.M); addOutline(s, this.outlineMat); s.traverse(o => { o.renderOrder = 11; if (o.material?.transparent) o.material.depthWrite = false; }); return s; }); // shell sits between the halo plate and the core
+    const shells = this.pickups.map(() => { const s = inst.def.pickup.makePickupShell(inst.ctx, inst.M); this.boostMaterials(s, inst); addOutline(s, this.outlineMat); s.traverse(o => { o.renderOrder = 11; if (o.material?.transparent) o.material.depthWrite = false; }); return s; }); // shell sits between the halo plate and the core
     return { pools, shells };
   }
   // Swap every pooled mesh for the new biome's art. Old geometries are freed; materials belong to the old biome instance.
   // Returns the old pools' geometries; the caller disposes them (immediately, or chunked on idle time in Journey).
   setBiome(inst, prebuilt = null) {
-    const old = [];
+    const old = []; if (this.biome?.hcClones) { for (const m of this.biome.hcClones.values()) m.dispose(); this.biome.hcClones.clear(); }
     for (const [type, list] of Object.entries(this.pools)) if (type !== 'pickup') for (const g of list) { collectGeometries(g, old); this.scene.remove(g); } // pickups persist; only their shell changes
     for (const g of this.active) if (g.userData.type !== 'pickup') { collectGeometries(g, old); this.scene.remove(g); }
     this.active = this.active.filter(g => g.userData.type === 'pickup');
@@ -152,7 +158,7 @@ export class Obstacles {
 
   spawn(type) {
     const g = this.pools[type].pop(); if (!g) return null;
-    const u = g.userData; u.t = 0; u.passed = false; u.hit = false; u.phase = 0;
+    const u = g.userData; u.t = 0; u.passed = false; u.hit = false; u.phase = 0; u.assisted = false;
     g.position.set(C.SPAWN_X, 0, 0); g.visible = true;
     if (type === 'pickup') this.beamMat.opacity = 0;
     this.active.push(g); return g;

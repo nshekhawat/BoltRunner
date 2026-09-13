@@ -7,11 +7,15 @@ const N = { C4: 261.63, D4: 293.66, E4: 329.63, G4: 392, A4: 440, C5: 523.25, D5
 const LEAD = ('C5 . E5 . G5 . E5 . C5 . D5 . E5 . . . ' + 'A4 . C5 . E5 . C5 . A4 . G4 . A4 . . . ' + 'C5 . E5 . G5 . A5 . G5 . E5 . D5 . . . ' + 'E5 . D5 . C5 . D5 . E5 . G5 . E5 . . . ' +
   'G5 . E5 . C5 . E5 . G5 . A5 . G5 . . . ' + 'A5 . G5 . E5 . D5 . C5 . D5 . E5 . . . ' + 'C6 . A5 . G5 . E5 . D5 . E5 . G5 . . . ' + 'E5 . C5 . D5 . E5 . C5 . . . . . . . ').trim().split(/\s+/);
 const BASS_ROOTS = ['C3', 'C3', 'F3', 'F3', 'G3', 'G3', 'A3', 'G3'];
+// Music presets named by biome audio.musicPreset: same loop, different voice, tempo, key and brightness.
+const MUSIC = { desert: { lead: 'square', bpm: 128, lp: 1800, semis: 0 }, city: { lead: 'sawtooth', bpm: 116, lp: 1100, semis: -3 }, jungle: { lead: 'triangle', bpm: 138, lp: 2600, semis: 2 }, frost: { lead: 'sine', bpm: 108, lp: 2200, semis: 5 } };
+// Ambient beds named by biome audio.ambientBed: looping filtered noise with a slow gain wobble (+ chirps for the jungle).
+const BEDS = { wind: { type: 'lowpass', f: 380, q: 0.7, g: 0.16, lfo: 0.13, depth: 0.5 }, rain: { type: 'bandpass', f: 2600, q: 0.4, g: 0.11, lfo: 0.4, depth: 0.15 }, jungle: { type: 'bandpass', f: 900, q: 0.5, g: 0.06, lfo: 0.2, depth: 0.3, chirps: true }, blizzard: { type: 'highpass', f: 900, q: 0.5, g: 0.14, lfo: 0.35, depth: 0.6 } };
 // Footstep timbres named by biome audio.footstepTimbre.
 const FOOT = { sand: { type: 'highpass', f: 2500, dur: 0.035, g: 0.06 }, wet: { type: 'bandpass', f: 1400, dur: 0.05, g: 0.09, q: 2 }, soft: { type: 'lowpass', f: 900, dur: 0.04, g: 0.08 }, crunch: { type: 'highpass', f: 4000, dur: 0.06, g: 0.09 } };
 
 export class AudioEngine {
-  constructor() { this.ctx = null; this.muted = !!store.mute; this.tempoMult = 1; this.filterOpen = 0; this.playing = false; this.stepIdx = 0; this.nextStepTime = 0; this.lastStep = 0; }
+  constructor() { this.ctx = null; this.muted = !!store.mute; this.tempoMult = 1; this.filterOpen = 0; this.playing = false; this.stepIdx = 0; this.nextStepTime = 0; this.lastStep = 0; this.preset = MUSIC.desert; this.bedName = 'wind'; this.ambienceOn = true; this.vol = { music: 0.32, sfx: 0.9 }; this.bed = null; }
   get unlocked() { return !!this.ctx; }
   unlock() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
@@ -19,14 +23,28 @@ export class AudioEngine {
     this.master = ctx.createGain(); this.master.gain.value = this.muted ? 0 : C.VOLUME;
     this.comp = ctx.createDynamicsCompressor(); this.comp.threshold.value = -18; this.comp.ratio.value = 4;
     this.master.connect(this.comp).connect(ctx.destination);
-    this.sfx = ctx.createGain(); this.sfx.gain.value = 0.9; this.sfx.connect(this.master);
-    this.musicBus = ctx.createGain(); this.musicBus.gain.value = 0.32;
+    this.sfx = ctx.createGain(); this.sfx.gain.value = this.vol.sfx; this.sfx.connect(this.master);
+    this.musicBus = ctx.createGain(); this.musicBus.gain.value = this.vol.music;
+    this.bedBus = ctx.createGain(); this.bedBus.gain.value = 1; this.bedBus.connect(this.master);
     this.musicFilter = ctx.createBiquadFilter(); this.musicFilter.type = 'lowpass'; this.musicFilter.frequency.value = 1800; this.musicFilter.Q.value = 0.7;
     this.musicBus.connect(this.musicFilter).connect(this.master);
     const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; this.noiseBuf = buf;
   }
   setMuted(m) { this.muted = m; store.mute = m; save(); if (this.master) this.master.gain.setTargetAtTime(m ? 0 : C.VOLUME, this.ctx.currentTime, 0.02); }
   toggleMute() { this.setMuted(!this.muted); return this.muted; }
+  setVolumes(music, sfx) { this.vol = { music: music * 0.45, sfx }; if (this.ctx) { this.musicBus.gain.setTargetAtTime(this.vol.music, this.ctx.currentTime, 0.05); this.sfx.gain.setTargetAtTime(sfx, this.ctx.currentTime, 0.05); } }
+  setAmbience(on) { this.ambienceOn = on; if (!on) this.stopBed(); else if (this.playing) this.startBed(); }
+  // Per-biome sound: music preset + ambient bed. Called on every biome switch (also mid-run in Journey).
+  setBiome(a) { this.preset = MUSIC[a.musicPreset] ?? MUSIC.desert; this.bedName = a.ambientBed; if (this.playing) { this.stopBed(); this.startBed(); } }
+  startBed() {
+    if (!this.ctx || this.bed || !this.ambienceOn) return; const ctx = this.ctx, B = BEDS[this.bedName] ?? BEDS.wind, src = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+    src.buffer = this.noiseBuf; src.loop = true; fl.type = B.type; fl.frequency.value = B.f; fl.Q.value = B.q; g.gain.value = B.g;
+    lfo.frequency.value = B.lfo; lg.gain.value = B.g * B.depth; lfo.connect(lg).connect(g.gain); lfo.start();
+    src.connect(fl).connect(g).connect(this.bedBus); src.start();
+    const chirps = B.chirps ? setInterval(() => { if (Math.random() < 0.5) this.tone({ type: 'sine', f: 1800 + Math.random() * 1500, f2: 2400 + Math.random() * 1200, dur: 0.12, g: 0.04, out: this.bedBus }); }, 700) : null;
+    this.bed = { src, lfo, chirps, g };
+  }
+  stopBed() { if (!this.bed) return; const { src, lfo, chirps, g } = this.bed; this.bed = null; g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3); setTimeout(() => { try { src.stop(); lfo.stop(); } catch { /* already stopped */ } }, 1200); if (chirps) clearInterval(chirps); }
 
   // ---- synth primitives --------------------------------------------------------
   tone({ type = 'square', f = 440, f2, t = 0, dur = 0.1, g = 0.2, a = 0.005, r = 0.05, out = this.sfx, lp }) {
@@ -73,16 +91,16 @@ export class AudioEngine {
   uiClick() { if (!this.ctx) return; this.tone({ type: 'square', f: 880, dur: 0.05, g: 0.06 }); }
 
   // ---- Music --------------------------------------------------------------------
-  startMusic() { if (!this.ctx || this.playing) return; this.playing = true; this.stepIdx = 0; this.nextStepTime = this.ctx.currentTime + 0.05; this.timer = setInterval(() => this.schedule(), 25); }
-  stopMusic() { this.playing = false; clearInterval(this.timer); }
+  startMusic() { if (!this.ctx || this.playing) return; this.playing = true; this.stepIdx = 0; this.nextStepTime = this.ctx.currentTime + 0.05; this.timer = setInterval(() => this.schedule(), 25); this.startBed(); }
+  stopMusic() { this.playing = false; clearInterval(this.timer); this.stopBed(); }
   // speedNorm 0..1 nudges tempo up; night 0..1 opens the filter.
-  setMood(speedNorm, night) { this.tempoMult = 1 + 0.22 * speedNorm; if (this.musicFilter) this.musicFilter.frequency.setTargetAtTime(1800 + night * 5000, this.ctx.currentTime, 0.5); }
+  setMood(speedNorm, night) { this.tempoMult = 1 + 0.22 * speedNorm; if (this.musicFilter) this.musicFilter.frequency.setTargetAtTime(this.preset.lp + night * 5000, this.ctx.currentTime, 0.5); }
   schedule() {
-    const ctx = this.ctx, stepDur = 60 / (C.MUSIC_BPM * this.tempoMult) / 4;
+    const ctx = this.ctx, P = this.preset, stepDur = 60 / (P.bpm * this.tempoMult) / 4, tr = 2 ** (P.semis / 12);
     while (this.nextStepTime < ctx.currentTime + 0.12) {
       const i = this.stepIdx % 128, t = this.nextStepTime - ctx.currentTime, bar = Math.floor(i / 16), s16 = i % 16, out = this.musicBus;
-      const lead = LEAD[i]; if (lead && lead !== '.') this.tone({ type: 'square', f: N[lead], t, dur: stepDur * 1.6, g: 0.07, r: 0.05, out });
-      if (s16 % 2 === 0) { const root = N[BASS_ROOTS[bar]] / (s16 % 8 === 4 ? 1 : 2); this.tone({ type: 'triangle', f: root, t, dur: stepDur * 1.8, g: 0.16, r: 0.06, out }); }
+      const lead = LEAD[i]; if (lead && lead !== '.') this.tone({ type: P.lead, f: N[lead] * tr, t, dur: stepDur * 1.6, g: P.lead === 'sawtooth' ? 0.05 : 0.07, r: 0.05, out, lp: P.lead === 'sawtooth' ? 2500 : undefined });
+      if (s16 % 2 === 0) { const root = N[BASS_ROOTS[bar]] * tr / (s16 % 8 === 4 ? 1 : 2); this.tone({ type: 'triangle', f: root, t, dur: stepDur * 1.8, g: 0.16, r: 0.06, out }); }
       if (s16 === 0 || s16 === 8) this.tone({ type: 'sine', f: 150, f2: 45, t, dur: 0.12, g: 0.3, r: 0.08, out });
       if (s16 === 4 || s16 === 12) this.noise({ type: 'bandpass', f: 1800, q: 0.6, t, dur: 0.1, g: 0.12, out });
       if (s16 % 2 === 0) this.noise({ type: 'highpass', f: 7000, t, dur: s16 % 4 === 2 ? 0.05 : 0.025, g: 0.035, out });

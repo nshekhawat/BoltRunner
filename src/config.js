@@ -23,7 +23,8 @@ export const CONFIG = {
   SHIELDS_MAX: 3,        // Hearts. Hit = lose one; zero = run ends.
 
   // ---- Scoring -------------------------------------------------------------
-  POINTS_PER_UNIT: 10,   // 1 point per 0.1 u travelled.
+  POINTS_PER_UNIT: 1,    // Points per world unit. 1 ≈ the Chrome dino's ~10-25 pts/s. (10 = 1 pt per 0.1 u, but that
+                         // scores 120+ pts/s and unlocks everything in seconds — bump MILESTONE etc. ×10 if you want it.)
   MILESTONE: 100,        // Points between chime + confetti.
   DAY_CYCLE_POINTS: 700, // Points per phase change (day → sunset → night → dawn).
   DAY_LERP_TIME: 4,      // s to blend between lighting phases.
@@ -32,7 +33,7 @@ export const CONFIG = {
   // ---- Obstacles -----------------------------------------------------------
   GAP_FACTOR: 1.4,       // Min spacing = GAP_FACTOR × speed × airtime → always clearable.
   GAP_RANDOM: 1.6,       // Max spacing = min spacing × this.
-  SPAWN_X: 42,           // u ahead of the robot where obstacles appear.
+  SPAWN_X: 55,           // u ahead of the robot where obstacles appear.
   DESPAWN_X: -14,        // u behind the robot where obstacles are recycled.
   REACTION_TIME: 0.45,   // s a child needs to see an obstacle before it can hit them (asserted).
   ROBOT_X: 0,            // Robot's fixed world x.
@@ -43,8 +44,9 @@ export const CONFIG = {
   BATTERY_EVERY: 12,     // Roughly one battery pickup per this many obstacles.
 
   // ---- Camera --------------------------------------------------------------
-  CAMERA_POS: [6.5, 4.2, 12.5],   // u, chase offset from the robot.
-  CAMERA_LOOK: [3.0, 2.0, 0],     // u, look-at target.
+  CAMERA_POS: [-3.5, 3.8, 9.5],   // u, chase offset from the robot (behind, above, to the side).
+  CAMERA_LOOK: [7.5, 1.4, 0],     // u, look-at target ahead of the robot so upcoming obstacles are visible early.
+  MIN_ASPECT_FOV: 1.5,            // Below this aspect ratio (portrait), widen the vertical FOV to keep the same horizontal view.
   FOV_BASE: 50, FOV_PUSH: 10,     // deg; FOV rises by FOV_PUSH at speed cap.
   CAMERA_SPRING: 6,               // Higher = stiffer follow.
   SHAKE_AMOUNT: 0.35, SHAKE_TIME: 0.35, // u, s. Screen shake on impact.

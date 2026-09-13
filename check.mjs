@@ -28,7 +28,13 @@ sock.onmessage = ({ data }) => {
   if (m.method === 'Network.loadingFailed') lines.push(`[NETFAIL] ${m.params.errorText}`);
 };
 await send('Runtime.enable'); await send('Network.enable'); await send('Log.enable');
-if (args.includes('--mobile')) await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 740, deviceScaleFactor: 2, mobile: true });
+if (args.includes('--mobile')) { // Samsung Galaxy S24 Ultra CSS viewport
+  await send('Emulation.setDeviceMetricsOverride', { width: 412, height: 915, deviceScaleFactor: 3.5, mobile: true });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await send('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36' });
+}
+const tap = async (x, y, hold = 60) => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); await sleep(hold); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); };
+const swipeDown = async (x, y) => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); for (let i = 1; i <= 5; i++) { await sleep(20); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + i * 25 }] }); } await sleep(150); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); };
 await send('Page.navigate', { url: `http://localhost:${PORT}/?${query}` });
 // wait until the loading screen is ready for input (procedural generation can take a while under SwiftShader)
 for (let i = 0; i < 120; i++) { const r = await send('Runtime.evaluate', { expression: "document.getElementById('loading')?.classList.contains('ready')", returnByValue: true }); if (r?.result?.value) break; await sleep(250); }
@@ -40,6 +46,18 @@ for (const key of (opt('keys') ?? '').split(',').filter(Boolean)) {
   await sleep(80);
   await send('Input.dispatchKeyEvent', { type: 'keyUp', code, key: k, windowsVirtualKeyCode: vk });
   await sleep(700);
+}
+// --touch: drive the game purely by touch and record what happened
+if (args.includes('--touch')) {
+  const probe = async label => { const r = await send('Runtime.evaluate', { expression: `JSON.stringify({ready:!!bolt.game.ready,state:bolt.game.state,y:+bolt.game.player.y.toFixed(2),duck:bolt.game.player.ducking,grounded:bolt.game.player.grounded})`, returnByValue: true }); lines.push(`[touch:${label}] ${r?.result?.value}`); };
+  await tap(200, 450); await sleep(500); await probe('after unlock tap');
+  await tap(200, 450); await sleep(500); await probe('after start tap');
+  await sleep(6000); await probe('after countdown');
+  await tap(200, 450, 250); await sleep(150); await probe('during hold-jump');
+  await sleep(2500); await swipeDown(200, 300); await probe('at swipe end (duck held until release)');
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 300 }] }); await sleep(30);
+  for (let i = 1; i <= 4; i++) { await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200, y: 300 + i * 30 }] }); await sleep(120); }
+  await probe('mid swipe (finger down)'); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(200); await probe('after release');
 }
 if (opt('js')) await send('Runtime.evaluate', { expression: opt('js') });
 await sleep(secs * 3000 / 4);

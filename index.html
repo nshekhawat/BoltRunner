@@ -24,6 +24,34 @@
   <div id="score"><div id="scorenum">00000</div><div id="combo"></div></div>
   <div id="fps" hidden></div>
   <div id="message"></div>
+  <button id="mutebtn" class="icon" aria-label="Mute">🔊</button>
+</div>
+<div id="menu" class="overlay" hidden>
+  <div class="card">
+    <h1>BOLT RUNNER</h1>
+    <p class="prompt">PRESS SPACE OR TAP TO PLAY</p>
+    <div class="row">
+      <button id="modebtn" class="pill">Kid mode</button>
+      <button id="qualitybtn" class="pill">Quality: Auto</button>
+    </div>
+    <p class="best">Best <b id="bestscore">00000</b> &nbsp;·&nbsp; Longest <b id="besttime">00:00.00</b></p>
+    <p class="hint"><span>⌨️ SPACE / ↑ jump &nbsp; ↓ duck</span><span>👆 tap jump &nbsp; 👇 swipe down duck</span></p>
+  </div>
+</div>
+<div id="pause" class="overlay" hidden><div class="card"><h2>Paused</h2><p class="prompt">Press P, SPACE or tap to resume</p></div></div>
+<div id="end" class="overlay" hidden>
+  <div class="card">
+    <h2>Nice run!</h2>
+    <p id="encourage" class="prompt"></p>
+    <div id="newbest" class="newbest" hidden>NEW BEST!</div>
+    <table class="stats">
+      <tr><td>Distance</td><td id="e-score">00000</td><td id="e-bests"></td></tr>
+      <tr><td>Time</td><td id="e-time">00:00.00</td><td id="e-bestt"></td></tr>
+      <tr><td>Cleared</td><td id="e-cleared">0</td><td></td></tr>
+    </table>
+    <button id="againbtn" class="big">PLAY AGAIN</button>
+    <button id="menubtn" class="pill">Menu</button>
+  </div>
 </div>
 <script type="module" src="src/main.js"></script>
 </body>

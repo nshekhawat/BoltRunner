@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { CONFIG as C } from './config.js';
 
 const PHASES = [
-  { name: 'day',    top: 0x2a6fd0, horizon: 0xa9cdec, fog: 0xd2c0a4, sun: 0xfff0d0, sunI: 2.0, hemiSky: 0xbfdfff, hemiGround: 0xc9915a, hemiI: 0.55, env: 0.6, elev: 0.8,  stars: 0,   shafts: 0.45, eyeLight: 0,  trail: 0.8, cloud: 0xffffff },
+  { name: 'day',    top: 0x1e5fc8, horizon: 0x8fbde8, fog: 0xd2c0a4, sun: 0xfff0d0, sunI: 2.0, hemiSky: 0xbfdfff, hemiGround: 0xc9915a, hemiI: 0.55, env: 0.6, elev: 0.8,  stars: 0,   shafts: 0.45, eyeLight: 0,  trail: 0.8, cloud: 0xffffff },
   { name: 'sunset', top: 0x3a2f7a, horizon: 0xf08a50, fog: 0xd89468, sun: 0xffb070, sunI: 1.6, hemiSky: 0x9070c0, hemiGround: 0xa06040, hemiI: 0.45, env: 0.45, elev: 0.12, stars: 0.2, shafts: 0.7,  eyeLight: 2,  trail: 1.0, cloud: 0xffb890 },
   { name: 'night',  top: 0x050818, horizon: 0x18244e, fog: 0x121a36, sun: 0x8fa8ff, sunI: 0.5, hemiSky: 0x2a3a70, hemiGround: 0x101020, hemiI: 0.3, env: 0.12, elev: -0.35, stars: 1, shafts: 0,   eyeLight: 14, trail: 1.6, cloud: 0x1e2a50 },
   { name: 'dawn',   top: 0x6a76b8, horizon: 0xf0b890, fog: 0xd8b49c, sun: 0xffd0a0, sunI: 1.5, hemiSky: 0xb0b8ff, hemiGround: 0xa07050, hemiI: 0.45, env: 0.45, elev: 0.15, stars: 0.1, shafts: 0.9,  eyeLight: 3,  trail: 1.0, cloud: 0xffd0b8 },
@@ -21,6 +21,8 @@ void main(){
   vec3 f = floor(vDir * 160.0); float r = fract(sin(dot(f, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
   col += vec3(step(0.993, r) * stars * smoothstep(0.02, 0.25, vDir.y) * 0.9);
   gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
 }`;
 
 export class World {

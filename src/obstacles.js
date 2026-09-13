@@ -9,6 +9,8 @@ import { DEFS, canSpawn, gapTime, unlockedTypes, checkClearable, leadTime, REQUI
     console.assert(leadTime(cap, d.speedMult ?? 1) >= REQUIRED_LEAD, `Lead time too short for ${n} at ${cap} u/s`);
 }
 
+for (const d of Object.values(DEFS)) d.halfW = Math.max(...d.boxes.map(b => b[0] + b[2] / 2)); // precomputed: no per-frame allocation
+
 const box = (w, h, d, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m; };
 const cyl = (rt, rb, h, mat, x = 0, y = 0, z = 0, seg = 14) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m; };
 const cone = (r, h, mat, x, y, z = 0, seg = 7) => { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m; };
@@ -119,8 +121,7 @@ export class Obstacles {
           if (u.hit || u.passed) break;
         }
       }
-      const halfW = Math.max(...d.boxes.map(b => b[0] + b[2] / 2));
-      if (!u.passed && !u.hit && !d.pickup && g.position.x + halfW < C.ROBOT_X - 0.6) { u.passed = true; ev.passed++; if (u.type === 'barrel') { u.tip = 0.001; ev.clang = true; } }
+      if (!u.passed && !u.hit && !d.pickup && g.position.x + d.halfW < C.ROBOT_X - 0.6) { u.passed = true; ev.passed++; if (u.type === 'barrel') { u.tip = 0.001; ev.clang = true; } }
       if (g.position.x < C.DESPAWN_X || (d.pickup && u.passed)) { g.visible = false; this.active.splice(i, 1); this.pools[u.type].push(g); }
     }
     // Spawning

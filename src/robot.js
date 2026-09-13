@@ -116,7 +116,7 @@ export class Robot {
     for (const p of pts) p.x -= s.speed * dt;
     // Push the current back-foot position at the head of the ribbon.
     const foot = this.legs[0].userData.foot; foot.getWorldPosition(this._tmp);
-    pts.pop(); pts.unshift({ x: this._tmp.x, y: Math.max(0.05, this._tmp.y) });
+    const head = pts.pop(); head.x = this._tmp.x; head.y = Math.max(0.05, this._tmp.y); pts.unshift(head); // recycle, no allocation
     const col = this.trailColor, on = (moving ? 1 : 0) * this.trailBright;
     for (let i = 0; i < TRAIL_N; i++) {
       const a = (1 - i / TRAIL_N) ** 2 * on * 0.55, w = 0.03 + 0.07 * (i / TRAIL_N), p = pts[i], o = i * 6, c = i * 8;

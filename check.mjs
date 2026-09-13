@@ -1,5 +1,5 @@
 // Headless smoke test via Chrome DevTools Protocol. No deps (Node ≥22 has fetch + WebSocket).
-// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--eval="js"]
+// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed"] [--size=W,H]
 import { spawn, execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
@@ -8,10 +8,10 @@ const query = args.find(a => !a.startsWith('--') && !/^\d+$/.test(a)) ?? '';
 const opt = k => args.find(a => a.startsWith(`--${k}=`))?.slice(k.length + 3);
 const PORT = 8765, DBG = 9333;
 const srv = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
-execSync('rm -rf /tmp/boltchrome');
+const PROFILE = `/tmp/boltchrome-${process.pid}`;
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
-  '--headless=new', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,720',
-  '--no-first-run', '--user-data-dir=/tmp/boltchrome', `--remote-debugging-port=${DBG}`,
+  '--headless=new', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--window-size=${opt('size') ?? '1280,720'}`,
+  '--no-first-run', `--user-data-dir=${PROFILE}`, `--remote-debugging-port=${DBG}`,
   '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let ws; for (let i = 0; i < 40 && !ws; i++) { await sleep(250); try { const t = await (await fetch(`http://localhost:${DBG}/json`)).json(); ws = t.find(x => x.type === 'page')?.webSocketDebuggerUrl; } catch {} }
@@ -28,17 +28,22 @@ sock.onmessage = ({ data }) => {
   if (m.method === 'Network.loadingFailed') lines.push(`[NETFAIL] ${m.params.errorText}`);
 };
 await send('Runtime.enable'); await send('Network.enable'); await send('Log.enable');
+if (args.includes('--mobile')) await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 740, deviceScaleFactor: 2, mobile: true });
 await send('Page.navigate', { url: `http://localhost:${PORT}/?${query}` });
-await sleep(secs * 1000 / 2);
+// wait until the loading screen is ready for input (procedural generation can take a while under SwiftShader)
+for (let i = 0; i < 120; i++) { const r = await send('Runtime.evaluate', { expression: "document.getElementById('loading')?.classList.contains('ready')", returnByValue: true }); if (r?.result?.value) break; await sleep(250); }
+await sleep(secs * 1000 / 4);
 for (const key of (opt('keys') ?? '').split(',').filter(Boolean)) {
-  const code = key === 'Space' ? 32 : key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0;
-  await send('Input.dispatchKeyEvent', { type: 'keyDown', code: key, key: key === 'Space' ? ' ' : key, windowsVirtualKeyCode: code });
+  const vk = key === 'Space' ? 32 : key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0;
+  const code = key.length === 1 ? `Key${key.toUpperCase()}` : key, k = key === 'Space' ? ' ' : key.length === 1 ? key.toLowerCase() : key;
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', code, key: k, windowsVirtualKeyCode: vk });
   await sleep(80);
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', code: key, key: key === 'Space' ? ' ' : key, windowsVirtualKeyCode: code });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', code, key: k, windowsVirtualKeyCode: vk });
   await sleep(700);
 }
-await sleep(secs * 1000 / 2);
-if (opt('eval')) { const r = await send('Runtime.evaluate', { expression: opt('eval'), returnByValue: true }); lines.push(`[eval] ${JSON.stringify(r?.result?.value)}`); }
+if (opt('js')) await send('Runtime.evaluate', { expression: opt('js') });
+await sleep(secs * 3000 / 4);
+if (opt('eval')) { const r = await send('Runtime.evaluate', { expression: opt('eval'), returnByValue: true }); lines.push(`[eval] ${r?.exceptionDetails ? 'EXCEPTION ' + r.exceptionDetails.exception?.description : JSON.stringify(r?.result?.value)}`); }
 if (opt('shot')) { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(opt('shot'), Buffer.from(r.data, 'base64')); }
 console.log(lines.length ? lines.join('\n') : '(no console output)');
-chrome.kill(); srv.kill(); process.exit(0);
+chrome.kill(); srv.kill(); await sleep(500); execSync(`rm -rf ${PROFILE}`); process.exit(0);

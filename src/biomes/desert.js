@@ -17,7 +17,7 @@ export default {
     { ...PH, top: 0x6a76b8, horizon: 0xf0b890, fog: 0xd8b49c, sun: 0xffd0a0, sunI: 1.5, hemiSky: 0xb0b8ff, hemiGround: 0xa07050, elev: 0.15, stars: 0.1, shafts: 0.9,  eyeLight: 3,  trail: 1.0, cloud: 0xffd0b8 },
     { ...PH, top: 0x1e5fc8, horizon: 0x8fbde8, fog: 0xd2c0a4, sun: 0xfff0d0, sunI: 2.0, hemiSky: 0xbfdfff, hemiGround: 0xc9915a, hemiI: 0.55, env: 0.6, elev: 0.8, stars: 0, shafts: 0.45, eyeLight: 0, trail: 0.8, cloud: 0xffffff },
     { ...PH, top: 0x3a2f7a, horizon: 0xf08a50, fog: 0xd89468, sun: 0xffb070, sunI: 1.6, hemiSky: 0x9070c0, hemiGround: 0xa06040, elev: 0.12, stars: 0.2, shafts: 0.7,  eyeLight: 2,  trail: 1.0, cloud: 0xffb890 },
-    { ...PH, top: 0x050818, horizon: 0x18244e, fog: 0x121a36, sun: 0x8fa8ff, sunI: 0.5, hemiSky: 0x2a3a70, hemiGround: 0x101020, hemiI: 0.3, env: 0.12, elev: -0.35, stars: 1, shafts: 0, eyeLight: 14, trail: 1.6, cloud: 0x1e2a50 },
+    { ...PH, top: 0x050818, horizon: 0x18244e, fog: 0x121a36, sun: 0x8fa8ff, sunI: 0.5, hemiSky: 0x2a3a70, hemiGround: 0x101020, hemiI: 0.3, env: 0.12, elev: -0.35, stars: 1, shafts: 0, eyeLight: 8, trail: 1.6, cloud: 0x1e2a50 },
   ],
 
   *makeMaterials(ctx) {

@@ -4,11 +4,11 @@ import * as THREE from 'three';
 import { CONFIG as C } from './config.js';
 import { PHASE } from './biomes/schema.js';
 
-const COLOR_KEYS = ['top', 'horizon', 'fog', 'sun', 'hemiSky', 'hemiGround', 'cloud'], NUM_KEYS = Object.keys(PHASE).filter(k => !COLOR_KEYS.includes(k));
-const toState = p => { const s = {}; for (const k of COLOR_KEYS) s[k] = new THREE.Color(p[k]); for (const k of NUM_KEYS) s[k] = p[k]; return s; }; // also clones a state
+const COLOR_KEYS = ['top', 'horizon', 'fog', 'sun', 'hemiSky', 'hemiGround', 'cloud'], NUM_KEYS = [...Object.keys(PHASE).filter(k => !COLOR_KEYS.includes(k)), 'aurora']; // aurora is optional in presets (default 0)
+const toState = p => { const s = {}; for (const k of COLOR_KEYS) s[k] = new THREE.Color(p[k]); for (const k of NUM_KEYS) s[k] = p[k] ?? 0; return s; }; // also clones a state
 
 const SKY_VERT = `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`;
-const SKY_FRAG = `uniform vec3 top, horizon, sunColor, sunDir; uniform float stars; varying vec3 vDir;
+const SKY_FRAG = `uniform vec3 top, horizon, sunColor, sunDir; uniform float stars, aurora, time; varying vec3 vDir;
 void main(){
   float h = clamp(vDir.y, 0.0, 1.0); vec3 col = mix(horizon, top, pow(h, 0.55));
   float s = max(dot(vDir, sunDir), 0.0); col += sunColor * (pow(s, 700.0) * 3.0 + pow(s, 6.0) * 0.18);
@@ -16,6 +16,12 @@ void main(){
   col += vec3(0.9, 0.92, 1.0) * (pow(m, 1200.0) * 2.5 + pow(m, 40.0) * 0.08) * stars;
   vec3 f = floor(vDir * 160.0); float r = fract(sin(dot(f, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
   col += vec3(step(0.993, r) * stars * smoothstep(0.02, 0.25, vDir.y) * 0.9);
+  if (aurora > 0.0) { // curtains: two drifting sine bands, green fading to violet, only high in the sky
+    float band = sin(vDir.x * 7.0 + time * 0.25 + sin(vDir.z * 5.0 + time * 0.17) * 1.8) * 0.5 + 0.5;
+    float band2 = sin(vDir.x * 4.0 - time * 0.19 + vDir.z * 3.0) * 0.5 + 0.5;
+    float a = smoothstep(0.03, 0.18, vDir.y) * smoothstep(0.95, 0.5, vDir.y) * (pow(band, 4.0) * 0.7 + pow(band2, 6.0) * 0.5);
+    col += mix(vec3(0.2, 1.0, 0.55), vec3(0.65, 0.3, 1.0), 0.5 + 0.5 * sin(vDir.x * 3.0 + time * 0.1)) * a * aurora * 1.3;
+  }
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -31,7 +37,7 @@ export class World {
     this.hemi = new THREE.HemisphereLight(0xbfdfff, 0xc9915a, 1.0);
     this.eyeLight = new THREE.PointLight(0x40e8ff, 0, 18, 1.5); this.eyeLight.position.set(0.3, 1.7, 0.5);
     scene.add(this.sun, this.sun.target, this.hemi, this.eyeLight);
-    this.skyU = { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, sunColor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, stars: { value: 0 } };
+    this.skyU = { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, sunColor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, stars: { value: 0 }, aurora: { value: 0 }, time: { value: 0 } };
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 16), new THREE.ShaderMaterial({ uniforms: this.skyU, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false }));
     scene.add(this.sky);
     this.clouds = []; const cg = new THREE.PlaneGeometry(34, 13); this.cloudMat = new THREE.MeshBasicMaterial({ map: this.T.cloud, transparent: true, depthWrite: false, opacity: 0.85, fog: true });
@@ -61,7 +67,7 @@ export class World {
 
   applyState() {
     const s = this.cur, u = this.skyU;
-    u.top.value.copy(s.top); u.horizon.value.copy(s.horizon); u.sunColor.value.copy(s.sun); u.stars.value = s.stars;
+    u.top.value.copy(s.top); u.horizon.value.copy(s.horizon); u.sunColor.value.copy(s.sun); u.stars.value = s.stars; u.aurora.value = s.aurora;
     u.sunDir.value.set(0.55, Math.sin(s.elev), -Math.cos(s.elev) * 0.6).normalize();
     this.scene.fog.color.copy(s.fog); this.scene.background = null;
     this.sun.color.copy(s.sun); this.sun.intensity = s.sunI; this.hemi.color.copy(s.hemiSky); this.hemi.groundColor.copy(s.hemiGround); this.hemi.intensity = s.hemiI;
@@ -95,10 +101,11 @@ export class World {
         if (p[i * 3] < ax[0]) p[i * 3] += wx; else if (p[i * 3] > ax[1]) p[i * 3] -= wx;
         if (p[i * 3 + 1] < ay[0]) p[i * 3 + 1] += wy; else if (p[i * 3 + 1] > ay[1]) p[i * 3 + 1] -= wy;
       }
+      if (s.blink) A.pts.material.opacity = (s.opacity ?? 0.6) * (0.35 + 0.65 * Math.max(0, Math.sin(this.time * s.blink.rate + s.blink.phase)));
       A.pts.geometry.attributes.position.needsUpdate = true;
     }
     for (const c of this.clouds) { c.position.x -= (dx * 0.05 + dt * 0.6); if (c.position.x < -140) c.position.x += 260; }
     for (const s of this.shafts) { s.position.x -= dx * 0.5; if (s.position.x < -50) s.position.x += 120; }
-    this.sky.position.copy(this.camera.position);
+    this.sky.position.copy(this.camera.position); this.skyU.time.value = this.time;
   }
 }

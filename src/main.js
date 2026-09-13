@@ -141,7 +141,7 @@ await progress(100, 'Tap or press SPACE to start');
 hud.show(true); loading.classList.add('ready');
 addEventListener('keydown', firstGesture, true); addEventListener('pointerdown', firstGesture, true);
 
-let last = performance.now(), frames = 0, fpsT = 0, lowFpsT = 0;
+let last = performance.now(), frames = 0, fpsT = 0, lowFpsT = 0, breathT = 0;
 renderer.setAnimationLoop(now => {
   const raw = (now - last) / 1000, dt = Math.min(raw, C.MAX_DT); last = now;
   const paused = game.state === 'PAUSED';
@@ -149,6 +149,7 @@ renderer.setAnimationLoop(now => {
     game.update(dt);
     world.update(dt, game.speed, game.score); game.robot.trailBright = world.trailBright;
     fx.update(dt, game.speed); updateCamera(dt);
+    const br = biome.def.particles.breath; if (br && game.state === 'PLAYING') { breathT += dt; if (breathT > br.every) { breathT = 0; fx.emit(0.4, game.player.y + 1.55, 0.3, 5, br.colors, 0.8, 0.6, 0.9, 0.3); } }
     audio.setMood(Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START))), world.cur.stars);
   }
   frames++; fpsT += raw; if (fpsT >= 0.5) { const fps = frames / fpsT, mem = renderer.info.memory; hud.fps(`${Math.round(fps)} FPS · ${quality} · geo ${mem.geometries} tex ${mem.textures} · ${biome.def.id}/${world.phaseName}`); frames = 0; fpsT = 0;

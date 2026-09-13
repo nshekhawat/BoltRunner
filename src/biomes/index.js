@@ -41,8 +41,9 @@ export function* buildBiome(def, shared) {
   const ctx = inst.ctx = makeCtx(shared, inst);
   inst.M = yield* def.makeMaterials(ctx);
   // Ground plane + lane strip
-  const gmap = def.ground.makeTexture(ctx), gnorm = def.ground.makeNormal(ctx); yield;
-  inst.groundMat = new THREE.MeshStandardMaterial({ map: gmap, normalMap: gnorm, roughness: 1, metalness: 0, ...def.ground.material });
+  const gmap = def.ground.makeTexture(ctx), gnorm = def.ground.makeNormal(ctx), grough = def.ground.makeRoughness?.(ctx); yield;
+  const gopts = { ...def.ground.material }; if (grough) gopts.roughnessMap = grough; if (gopts.normalScale) gopts.normalScale = new THREE.Vector2(gopts.normalScale.x, gopts.normalScale.y);
+  inst.groundMat = new THREE.MeshStandardMaterial({ map: gmap, normalMap: gnorm, roughness: 1, metalness: 0, ...gopts });
   for (const t of [gmap, gnorm, inst.groundMat.roughnessMap]) if (t) { t.repeat.set(40 * def.ground.scrollDetail, 12 * def.ground.scrollDetail); t.wrapS = t.wrapT = THREE.RepeatWrapping; }
   inst.ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 120), inst.groundMat); inst.ground.rotation.x = -Math.PI / 2; inst.ground.receiveShadow = true; inst.root.add(inst.ground);
   const lmap = def.lane.makeTexture(ctx); lmap.repeat.set(40, 1); yield;

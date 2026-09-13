@@ -107,7 +107,8 @@ export class Obstacles {
       g.position.x -= speed * (d.speedMult ?? 1) * dt;
       // Archetype animation (biome-independent: named children opt in)
       if (d.fly !== undefined) { body.position.y = d.fly + Math.sin(u.t * 5) * 0.08; body.traverse(o => { if (o.name === 'spin') o.rotation.y += dt * 40; else if (o.name === 'flap') o.rotation.x = (o.userData.base ?? 0) + Math.sin(u.t * 9) * 0.5 * (o.userData.side ?? 1); }); }
-      if (d.speedMult) { const r = body.getObjectByName('roll'); if (r) r.rotation.z -= speed * d.speedMult * dt / 0.55; }
+      if (d.speedMult) body.traverse(o => { if (o.name === 'roll') o.rotation.z -= speed * d.speedMult * dt / (o.userData.r ?? 0.55); });
+      body.traverse(o => { if (o.name === 'flicker') o.visible = Math.sin(u.t * 17) + Math.sin(u.t * 5.3) > -0.6; });
       if (d.pickup) { body.position.y = C.PICKUP_HEIGHT + Math.sin(u.t * Math.PI * 2 * 1.2) * 0.12; body.getObjectByName('ring').rotation.z += dt * 2.4; body.getObjectByName('shell').rotation.y += dt * 1.2;
         PICK.core.emissive.setHSL(0.5, 1, 0.75 + 0.25 * Math.sin(u.t * 6)); // white → cyan pulse
         const tt = timeToPlayer(g.position.x, speed), on = tt <= C.PICKUP_BEAM_LEAD; if (on && !u.beamOn) ev.beam = true; u.beamOn = on;

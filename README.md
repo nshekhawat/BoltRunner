@@ -1,5 +1,7 @@
 # Bolt Runner
 
+**Play it: https://bolt-runner-delta.vercel.app**
+
 A friendly 3D endless runner in the spirit of the Chrome offline T-Rex game, built with
 Three.js. The runner is a chunky robot called Bolt. Designed for a seven-year-old: three
 shields instead of instant death, generous timing windows, a hard speed cap, and no scary
@@ -255,13 +257,16 @@ node check.mjs         # headless Chrome smoke test (console errors, 404s, scree
 `--shot=out.png`, `--size=W,H`, `--mobile` (Galaxy S24 Ultra viewport + touch),
 `--touch` (drives a whole run by touch), `--gpu` (real GPU instead of SwiftShader, for
 frame-time checks), `--uncapped` (vsync off), `--heap` (live allocations by call site at the
-end: the leak hunter), `--cpuprofile` (self time by function), `--webgpu`. Every run gets its own
-HTTP port and DevTools port (from Chrome's `DevToolsActivePort` file), so runs can overlap and
-a stray Chrome can never be picked up by mistake. Example verification commands:
+end: the leak hunter), `--cpuprofile` (self time by function), `--webgpu`,
+`--url=https://host` (smoke-test a deployed site instead of this working copy — no local server
+is started). Every run gets its own HTTP port and DevTools port (from Chrome's
+`DevToolsActivePort` file), so runs can overlap and a stray Chrome can never be picked up by
+mistake. Example verification commands:
 
 ```sh
 node check.mjs 6 "q=low" --keys=Space --eval="JSON.stringify(bolt.contrastTest().pass)"
 node check.mjs 10 --gpu --keys=Space --js="for(let i=0;i<10;i++)bolt.switchBiome(['city','jungle','frostpeak','desert'][i%4])" --eval="JSON.stringify(bolt.renderer.info.memory)"
+node check.mjs 14 "q=medium" --gpu --url=https://bolt-runner-delta.vercel.app --keys=Space,Space,Space --shot=/tmp/live.png   # the deployed site
 ```
 
 ## Files

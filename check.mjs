@@ -1,5 +1,5 @@
 // Headless smoke test via Chrome DevTools Protocol. No deps (Node ≥22 has fetch + WebSocket).
-// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu] [--uncapped] [--heap] [--cpuprofile] [--webgpu]
+// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu] [--uncapped] [--heap] [--cpuprofile] [--webgpu] [--url=https://host]
 import { spawn, execSync } from 'node:child_process';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 const args = process.argv.slice(2);
@@ -8,8 +8,10 @@ const query = args.find(a => !a.startsWith('--') && !/^\d+$/.test(a)) ?? '';
 const opt = k => args.find(a => a.startsWith(`--${k}=`))?.slice(k.length + 3);
 // Ports are per run: a random HTTP port and Chrome's own choice of DevTools port (read from the profile's DevToolsActivePort file),
 // so two runs never collide and a stray Chrome from a killed run can never be picked up by mistake.
+// --url: smoke-test a deployed site instead of this working copy (no local server is started).
+const BASE = opt('url')?.replace(/\/$/, '');
 const PORT = 8800 + (process.pid % 190);
-const srv = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
+const srv = BASE ? null : spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
 const PROFILE = `/tmp/boltchrome-${process.pid}`; execSync(`rm -rf ${PROFILE}`);
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', ...(args.includes('--gpu') ? [] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']), `--window-size=${opt('size') ?? '1280,720'}`, // --gpu: real GPU (frame-time checks)
@@ -17,7 +19,7 @@ const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chro
   '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let ws, DBG = 0; for (let i = 0; i < 80 && !ws; i++) { await sleep(250); try { if (!DBG) { const f = `${PROFILE}/DevToolsActivePort`; if (!existsSync(f)) continue; DBG = +readFileSync(f, 'utf8').split('\n')[0]; } const t = await (await fetch(`http://localhost:${DBG}/json`)).json(); ws = t.find(x => x.type === 'page')?.webSocketDebuggerUrl; } catch {} }
-if (!ws) { console.error('check.mjs: Chrome did not expose a page target'); chrome.kill(); srv.kill(); process.exit(2); }
+if (!ws) { console.error('check.mjs: Chrome did not expose a page target'); chrome.kill(); srv?.kill(); process.exit(2); }
 const sock = new WebSocket(ws); await new Promise(r => sock.onopen = r);
 let id = 0; const pending = new Map();
 const send = (method, params = {}) => new Promise(r => { pending.set(++id, r); sock.send(JSON.stringify({ id, method, params })); });
@@ -38,7 +40,7 @@ if (args.includes('--mobile')) { // Samsung Galaxy S24 Ultra CSS viewport
 }
 const tap = async (x, y, hold = 60) => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); await sleep(hold); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); };
 const swipeDown = async (x, y) => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); for (let i = 1; i <= 5; i++) { await sleep(20); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + i * 25 }] }); } await sleep(150); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); };
-await send('Page.navigate', { url: `http://localhost:${PORT}/?${query}` });
+await send('Page.navigate', { url: `${BASE ?? `http://localhost:${PORT}`}/?${query}` });
 // wait until the loading screen is ready for input (procedural generation can take a while under SwiftShader)
 for (let i = 0; i < 360; i++) { const r = await send('Runtime.evaluate', { expression: "document.getElementById('loading')?.classList.contains('ready')", returnByValue: true }); if (r?.result?.value) break; await sleep(250); } // up to 90 s: a cold GPU process right after another run can be slow
 if (args.includes('--heap')) { await send('HeapProfiler.enable'); await send('HeapProfiler.collectGarbage'); await send('HeapProfiler.startSampling', { samplingInterval: 4096 }); } // --heap: live allocations by call site at the end (leak hunt)
@@ -74,4 +76,4 @@ if (args.includes('--heap')) { await send('HeapProfiler.collectGarbage'); const 
   lines.push('[heap] live allocations by call site (KB):'); for (const [k, v] of [...by].sort((a, b) => b[1] - a[1]).slice(0, 18)) lines.push(`[heap] ${(v / 1024).toFixed(0).padStart(7)}  ${k}`); }
 if (opt('shot')) { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(opt('shot'), Buffer.from(r.data, 'base64')); }
 console.log(lines.length ? lines.join('\n') : '(no console output)');
-chrome.kill(); srv.kill(); await sleep(500); execSync(`rm -rf ${PROFILE}`); process.exit(0);
+chrome.kill(); srv?.kill(); await sleep(500); execSync(`rm -rf ${PROFILE}`); process.exit(0);

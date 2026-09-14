@@ -8,7 +8,8 @@ node_modules
 .git
 .DS_Store
 
-# Dev tooling: not part of the game. It lives in the GitHub repo, not on the site.
+# Dev tooling and README screenshots: not part of the game. They live in the GitHub repo, not on the site.
 test
 perf
+docs
 check.mjs

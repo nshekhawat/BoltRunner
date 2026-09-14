@@ -7,6 +7,14 @@ Three.js. The runner is a chunky robot called Bolt. Designed for a seven-year-ol
 shields instead of instant death, generous timing windows, a hard speed cap, and no scary
 failure states.
 
+| | |
+|:---|:---|
+| ![Sunset Canyon: Bolt at the top of a jump over a cluster of cacti, red mesas and light shafts behind](docs/desert.jpg)<br>**Sunset Canyon** — a cactus cluster, cleared at the top of the arc | ![Neon City: Bolt hurdling a delivery drone on wet asphalt at night, lit tower windows and rain behind](docs/city.jpg)<br>**Neon City** — rain, wet asphalt and a delivery drone to hurdle |
+| ![Temple Jungle: Bolt above a rolling stone boulder, temple pillars and trees in green fog](docs/jungle.jpg)<br>**Temple Jungle** — a boulder that rolls faster than the world scrolls | ![Frost Peak: Bolt jumping an icicle spike between snowy pines and mountain peaks](docs/frostpeak.jpg)<br>**Frost Peak** — an icicle spike between the pines |
+
+Every screenshot here is reproducible: `sh docs/capture.sh` replays the same seeded runs and
+freezes each one on the same frame.
+
 v2 adds four selectable worlds (desert canyon, neon city, temple jungle, frost peak), a
 Journey mode that runs through all of them, a health pickup that is recognisable in every
 world, a full settings screen, and progression (records, cosmetics, ghost, power-ups,
@@ -42,8 +50,8 @@ Two things about that setup are deliberate:
   still make repeat visits `304`s.
 - **`.vercelignore` replaces `.gitignore`** for CLI uploads rather than adding to it, so `.env`
   is listed there explicitly. Without that line the file would be uploaded and served at
-  `/.env`. The dev tooling (`test/`, `perf/`, `check.mjs`) is excluded too: it belongs in the
-  repository, not on the site.
+  `/.env`. The dev tooling and the README screenshots (`test/`, `perf/`, `docs/`, `check.mjs`)
+  are excluded too: they belong in the repository, not on the site.
 
 A Worker (`src/noise-worker.js`) is loaded through `new URL(..., import.meta.url)`, so the site
 must be served from the root of its domain, as it is here.
@@ -73,6 +81,13 @@ runs the benchmark (see Performance), `?latency=1` measures press-to-pixel laten
 `switchBiome(id)` and `contrastTest()` in the console.
 
 ## Worlds
+
+![The world-select carousel: cards for Sunset Canyon, Neon City, Temple Jungle, Frost Peak and Surprise Me, with the robot standing on the highlighted card and an unlock progress bar underneath](docs/select.jpg)
+
+The carousel builds the highlighted world in the background while you browse, so picking one
+starts immediately. Each card carries that world's records, and the bar underneath tracks the
+next cosmetic unlock. After a few quiet seconds the highlight walks along by itself, so a single
+button can pick a world and play.
 
 | id | World | Obstacles (small · tall · wide · flyer · hazard · chaser) |
 |---|---|---|
@@ -106,6 +121,8 @@ Frame time is asserted during every transition (`console.assert` if a frame exce
 
 ### The health pickup
 
+![A health pickup ahead on the road at night: a glowing white core on a white backing plate inside a neon frame, a pink pool of light beneath it, and one of the three hearts in the HUD already lost](docs/pickup.jpg)
+
 A constant recognition layer plus a decorative shell:
 
 - Invariant everywhere: pulsing white → cyan core (0.27 u sphere), a spinning ring with
@@ -113,8 +130,9 @@ A constant recognition layer plus a decorative shell:
   vertical light beam two seconds before arrival, the same chime and burst.
 - Contrast guarantee: a backing plate behind the core, drawn with depth test off (visible
   through fog, rain, snow, dust). The plate is pure black or pure white depending on the
-  measured luminance of what is actually behind the lane (a 6×6 pixel readback every 1.5 s,
-  asynchronous through a pixel-pack buffer so it never stalls the GPU). A rim sprite around
+  measured luminance of what is actually behind the lane (a 6×6 pixel readback taken once per
+  pickup, when its beam telegraphs, and once after a world change — a readback is a pipeline
+  flush, so never on a timer — and asynchronous through a pixel-pack buffer either way). A rim sprite around
   the plate and the beam carry the biome palette's complementary hue.
 - Per-world shells never cross the core: brass fins (desert), open neon frame (city),
   crystal petals in glowing vine loops (jungle), ice rings with frost crystals (frost peak).

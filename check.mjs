@@ -40,7 +40,7 @@ const tap = async (x, y, hold = 60) => { await send('Input.dispatchTouchEvent', 
 const swipeDown = async (x, y) => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); for (let i = 1; i <= 5; i++) { await sleep(20); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + i * 25 }] }); } await sleep(150); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); };
 await send('Page.navigate', { url: `http://localhost:${PORT}/?${query}` });
 // wait until the loading screen is ready for input (procedural generation can take a while under SwiftShader)
-for (let i = 0; i < 120; i++) { const r = await send('Runtime.evaluate', { expression: "document.getElementById('loading')?.classList.contains('ready')", returnByValue: true }); if (r?.result?.value) break; await sleep(250); }
+for (let i = 0; i < 360; i++) { const r = await send('Runtime.evaluate', { expression: "document.getElementById('loading')?.classList.contains('ready')", returnByValue: true }); if (r?.result?.value) break; await sleep(250); } // up to 90 s: a cold GPU process right after another run can be slow
 if (args.includes('--heap')) { await send('HeapProfiler.enable'); await send('HeapProfiler.collectGarbage'); await send('HeapProfiler.startSampling', { samplingInterval: 4096 }); } // --heap: live allocations by call site at the end (leak hunt)
 await sleep(secs * 1000 / 4);
 for (const key of (opt('keys') ?? '').split(',').filter(Boolean)) {

@@ -371,6 +371,7 @@ Apple M3, Chrome headless with the real GPU, 1280×720. `perf/baseline.json` is 
 | M4 draw-call collapse | 66 / 92 / 81 / 70 | 3.1 / 3.1 / 3.2 / 3.8 | 2.8 / 2.8 / 2.6 / 3.1 | 222 / 153 / 188 / 216 | 33 / 41 / 31 / 25 |
 | M5 warm-up, worker noise, hygiene | 65 / 92 / 82 / 69 | 3.0 / 3.1 / 3.6 / — | | 6.8 / 7.7 / 14 / — | 173 / 172 / 158 / — |
 | M6–M9 fill rate, controller, juice, chunks | 62 / 92 / 81 / 68 | 2.6 / 2.6 / 2.7 / 2.5 | 1.6 / 1.6 / 1.1 / 1.2 | 114 / 86 / 83 / 98 | 140 / 189 / 203 / 230 |
+| **v3 final (60 s, `perf/current.json`)** | 63 / 91 / 81 / 70 | 2.9 / 2.6 / 2.6 / 2.5 | 1.4 / 1.3 / 0.9 / 0.8 | 394 / 81 / 66 / 67 | 111 / 239 / 172 / 215 |
 
 (The M4 worst frames are the first-draw shader stalls that M5 removed; the M6–M9 worst
 frames are uncapped queue flushes — with vsync the same runs have no frame over 16.8 ms.)

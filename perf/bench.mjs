@@ -9,7 +9,7 @@ const tiers = opt('tiers', 'high,medium,low').split(','), secs = +opt('secs', 60
 const report = { date: new Date().toISOString(), label: opt('label', ''), vsync: args.includes('--vsync'), commit: spawnSync('git', ['rev-parse', '--short', 'HEAD']).stdout.toString().trim(), secs, tiers: {} };
 for (const tier of tiers) {
   const q = `bench=1&q=${tier}&secs=${secs}${biomes ? '&biomes=' + biomes : ''}${args.includes('--webgpu') ? '&webgpu=1' : ''}`;
-  process.stderr.write(`▶ ${tier} (${q})\n`);
+  process.stderr.write(`▶ ${tier} (${q})\n`); if (tier !== tiers[0]) spawnSync('sleep', ['5']); // let the previous Chrome exit fully
   const r = spawnSync('node', ['check.mjs', '1', q, '--gpu', ...(args.includes('--vsync') ? [] : ['--uncapped']), ...(args.includes('--webgpu') ? ['--webgpu'] : []), '--eval=bolt.bench.done'], { encoding: 'utf8', maxBuffer: 1 << 26, timeout: (secs * 9 + 180) * 1000 });
   const line = r.stdout.split('\n').find(l => l.startsWith('[eval] '));
   if (!line) { console.error(r.stdout, r.stderr); process.exit(1); }

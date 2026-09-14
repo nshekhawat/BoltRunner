@@ -19,9 +19,10 @@ export class Game {
     const dbgMat = new THREE.MeshBasicMaterial({ color: 0x40ff40, wireframe: true });
     this.dbgBoxes = [0, 1, 2].map(() => { const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), dbgMat); m.visible = false; scene.add(m); return m; });
     this.handlers = {}; this.ev = {}; this.mode = store.mode in C.SPEED_CAP ? store.mode : C.DIFFICULTY_DEFAULT;
-    this.state = 'MENU'; this.prevState = 'MENU'; this.stateTime = 0; this.timeScale = 1; this.slowT = 0; this.tutorialDone = false;
+    this.state = 'MENU'; this.prevState = 'MENU'; this.stateTime = 0; this.timeScale = 1; this.slowT = 0; this.tutorialDone = false; this.inPress = false; this.inRelease = false; this.renderY = 0;
     this.stickersBefore = earned(store.lifetime, store.records).map(x => x.id);
     this.select = null; this.runKey = 'desert'; this.settings = null; this.startSpeed = C.SPEED_START; this.sessionLimit = 0; this.sessionT = 0; // select carousel (set by main); records key for the current run ('journey' in Journey mode)
+    this.robotState = { mode: 'idle', y: 0, vy: 0, speed: 0, ducking: false, hitFlash: 0, airtime: 0, grounded: true }; // reused every frame (no allocation)
     this.resetRun();
     this.bindInput();
     this.bindMenu();
@@ -50,9 +51,12 @@ export class Game {
       case 'SELECT': this.select?.pick(); break;
       case 'CRASHED': if (this.stateTime > 1.5) this.startRun(); break;
       case 'PAUSED': this.resume(); break;
-      case 'PLAYING': case 'COUNTDOWN': this.player.pressJump(); if (this.slowT > 0) { this.slowT = 0; this.timeScale = 1; hud.message('', 0); } break; // any press skips the tutorial beat
+      case 'PLAYING': case 'COUNTDOWN': this.inPress = true; if (this.slowT > 0) { this.slowT = 0; this.timeScale = 1; hud.message('', 0); } break; // latched; consumed by the next tick. Any press skips the tutorial beat
     }
   }
+  jumpReleased() { this.inRelease = true; }
+  // Input is polled per tick, not per frame: press/release edges are latched so a tap between two ticks is never swallowed and never fires twice.
+  consumeInput() { if (this.inPress) { this.player.pressJump(); this.inPress = false; } if (this.inRelease) { this.player.releaseJump(); this.inRelease = false; } }
   bindInput() {
     const JUMP = this.jumpKeys = new Set(['Space', 'ArrowUp', 'KeyW']);
     addEventListener('keydown', e => {
@@ -66,12 +70,12 @@ export class Game {
       else if (e.code === 'KeyD' && this.state === 'MENU') { this.setMode(this.mode === 'kid' ? 'normal' : this.mode === 'normal' ? 'nofail' : 'kid'); this.emit('modeChanged', this.mode); }
       else if (e.code === 'KeyH') { C.DEBUG_HITBOXES = !C.DEBUG_HITBOXES; }
     });
-    addEventListener('keyup', e => { if (JUMP.has(e.code)) this.player.releaseJump(); });
+    addEventListener('keyup', e => { if (JUMP.has(e.code)) this.jumpReleased(); });
     // Touch / pointer: tap = jump (hold for full height).
     const canvas = document.getElementById('game');
     canvas.addEventListener('pointerdown', e => { if (e.target.closest?.('button,select')) return; this.jumpPressed(); });
-    addEventListener('pointerup', () => this.player.releaseJump());
-    addEventListener('pointercancel', () => this.player.releaseJump());
+    addEventListener('pointerup', () => this.jumpReleased());
+    addEventListener('pointercancel', () => this.jumpReleased());
     // Overlays: tapping their background counts as the one button; buttons handle themselves.
     for (const id of ['menu', 'pause', 'end']) document.getElementById(id).addEventListener('pointerdown', e => { if (!e.target.closest('button,select')) this.jumpPressed(); });
     addEventListener('blur', () => this.pause());
@@ -89,8 +93,10 @@ export class Game {
   }
   get speedCap() { return C.SPEED_CAP[this.mode]; }
 
-  update(dt) {
-    this.stateTime += dt; hud.update(dt);
+  // ---- Fixed-rate simulation tick (dt = 1 / TICK_RATE, always). Physics, collision, spawning, scoring. Nothing here touches the DOM or meshes. ----
+  tick(dt) {
+    this.consumeInput();
+    this.stateTime += dt;
     if (this.slowT > 0) { this.slowT -= dt; if (this.slowT <= 0) this.timeScale = 1; }
     const p = this.player;
     if (this.state === 'COUNTDOWN') {
@@ -111,7 +117,6 @@ export class Game {
       this.updatePower(dt); this.record(dt);
       this.invuln = Math.max(0, this.invuln - dt); this.hitFlash = Math.max(0, this.hitFlash - dt);
       const boxes = this.robot.boxes(p.y, false, C.HITBOX_SCALE[this.mode]);
-      this.dbgBoxes.forEach((m, i) => { m.visible = C.DEBUG_HITBOXES; if (m.visible) { m.position.set(boxes[i].cx, boxes[i].cy, 0); m.scale.set(boxes[i].w, boxes[i].h, 1); } });
       this.obstacles.powerActive = !!this.power;
       this.obstacles.update(dt, this.speed, this.score, this.shields, this.ev, this.invuln > 0 || this.rocket ? NO_BOXES : boxes);
       const ev = this.ev;
@@ -127,13 +132,21 @@ export class Game {
         hud.shields(this.shields, C.SHIELDS_MAX); hud.combo(0); this.emit('hit', ev.hit);
         if (this.shields <= 0) { const st = this.stats(); this.setState('CRASHED'); hud.end(true, st); this.emit('crashed', st); }
       }
-      hud.score(this.score); hud.timer(this.time);
     }
+    if (this.state === 'CRASHED') { this.speed = Math.max(0, this.speed - 30 * dt); this.player.update(dt); this.obstacles.update(dt, this.speed, this.score, C.SHIELDS_MAX, this.ev, NO_BOXES); }
+  }
+  // ---- Per-frame visuals. alpha = fraction of a tick elapsed since the last one; render transforms interpolate previous → current tick state. ----
+  frame(dt, alpha) {
+    hud.update(dt); const p = this.player;
+    this.renderY = p.prevY + (p.y - p.prevY) * alpha;
+    if (this.state === 'PLAYING') { hud.score(this.score); hud.timer(this.time); }
+    if (C.DEBUG_HITBOXES || this.dbgBoxes[0].visible) { const boxes = this.robot.boxes(this.renderY, false, C.HITBOX_SCALE[this.mode]); for (let i = 0; i < 3; i++) { const m = this.dbgBoxes[i]; m.visible = C.DEBUG_HITBOXES && this.state === 'PLAYING'; if (m.visible) { m.position.set(boxes[i].cx, boxes[i].cy, 0); m.scale.set(boxes[i].w, boxes[i].h, 1); } } }
     if (this.state === 'SELECT') this.select?.update(dt);
     this.updateGhost(dt);
-    if (this.state === 'CRASHED') { this.speed = Math.max(0, this.speed - 30 * dt); this.player.update(dt); this.obstacles.update(dt, this.speed, this.score, C.SHIELDS_MAX, this.ev, NO_BOXES); }
+    this.obstacles.render(alpha, dt, this.speed);
     const mode = this.state === 'PLAYING' ? (this.rocket ? 'jump' : p.grounded ? 'run' : 'jump') : this.state === 'CRASHED' ? 'stumble' : this.state === 'COUNTDOWN' ? 'run' : 'idle';
-    if (this.robot.update(dt, { mode, y: p.y, vy: p.vy, speed: this.speed, ducking: false, hitFlash: this.hitFlash, airtime: p.airtime, grounded: p.grounded })) this.emit('step', this.speed);
+    const R = this.robotState; R.mode = mode; R.y = this.renderY; R.vy = p.vy; R.speed = this.speed; R.hitFlash = this.hitFlash; R.airtime = p.airtime; R.grounded = p.grounded;
+    if (this.robot.update(dt, R)) this.emit('step', this.speed);
   }
   // ---- Power-ups: 5–8 s each, on-screen timer ring, never two at once ----
   activatePower(kind) {

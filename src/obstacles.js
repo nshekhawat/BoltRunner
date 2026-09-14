@@ -22,6 +22,8 @@ function addOutline(group, mat) {
   });
 }
 const disposeTree = root => root.traverse(o => { if (o.geometry && !o.userData.keep) o.geometry.dispose(); });
+// Named children that opt into archetype animation, gathered once at build time so the per-frame animation never traverses.
+function animParts(root) { const a = { spin: [], flap: [], roll: [], flicker: [], plume: null }; root.traverse(o => { if (o.name in a && o.name !== 'plume') a[o.name].push(o); else if (o.name === 'plume') a.plume = o; }); return a; }
 const collectGeometries = (root, out) => { root.traverse(o => { if (o.geometry && !o.userData.keep) out.push(o.geometry); }); return out; };
 
 // ---- Health pickup: invariant recognition layer -----------------------------------------------
@@ -74,7 +76,7 @@ export class Obstacles {
     const beam = new THREE.Mesh(PICK.beamGeo, this.beamMat); beam.name = 'beam'; beam.userData.keep = true; beam.position.y = 30; beam.rotation.y = 0.5; beam.renderOrder = 9; g.add(beam);
     const shell = new THREE.Group(); shell.name = 'shell'; body.add(shell);
     const dbg = new THREE.Mesh(new THREE.BoxGeometry(DEFS.pickup.boxes[0][2], DEFS.pickup.boxes[0][3], 1), this.dbgMat); dbg.position.y = C.PICKUP_HEIGHT; dbg.visible = false; g.add(dbg);
-    g.userData = { type: 'pickup', def: DEFS.pickup, t: 0, passed: false, hit: false, dbg: [dbg] };
+    g.userData = { type: 'pickup', def: DEFS.pickup, t: 0, passed: false, hit: false, dbg: [dbg], x: C.SPAWN_X, px: C.SPAWN_X, anim: animParts(body), ring, shell, beamOn: false, dbgOn: false };
     return g;
   }
 
@@ -89,7 +91,7 @@ export class Obstacles {
     const key = `${inst.def.id}.${d.arch}`;
     if (!(key in this.fit)) { this.fit[key] = { sx: +sx.toFixed(2), sy: +sy.toFixed(2) }; if (Math.abs(sx - 1) > 0.15 || Math.abs(sy - 1) > 0.15) console.warn(`Obstacle mesh ${key} needs ${Math.round(Math.max(Math.abs(sx - 1), Math.abs(sy - 1)) * 100)}% scaling to fit its archetype box (${d.width}×${d.height})`); }
     addOutline(mesh, this.outlineMat);
-    g.userData = { type, def: d, t: 0, passed: false, hit: false, phase: 0, dbg: [] };
+    g.userData = { type, def: d, t: 0, passed: false, hit: false, phase: 0, dbg: [], x: C.SPAWN_X, px: C.SPAWN_X, anim: animParts(mesh), dbgOn: false };
     for (const b of d.boxes) { const m = new THREE.Mesh(new THREE.BoxGeometry(b[2], b[3], 1), this.dbgMat); m.position.set(b[0], b[1], 0); m.visible = false; g.add(m); g.userData.dbg.push(m); }
     return g;
   }
@@ -119,7 +121,7 @@ export class Obstacles {
     this.biome = inst; this.outlineMat.color.setHex(inst.def.palette.rim); this.rimMat.color.copy(complement(inst.def.palette.sky)); this.beamMat.color.copy(this.rimMat.color); this.setBackgroundLuminance(this.sceneL); this.applyPlate(0);
     const { pools, shells } = prebuilt ?? (() => { const g = this.buildPools(inst); let r; do r = g.next(); while (!r.done); return r.value; })();
     this.pools = pools; for (const list of Object.values(pools)) for (const g of list) this.scene.add(g);
-    this.pickups.forEach((p, i) => { const shell = p.getObjectByName('shell'); collectGeometries(shell, old); shell.clear(); shell.add(shells[i]); });
+    this.pickups.forEach((p, i) => { const shell = p.getObjectByName('shell'); collectGeometries(shell, old); shell.clear(); shell.add(shells[i]); p.userData.anim = animParts(p.children[0]); });
     { const shell = this.power.getObjectByName('shell'); collectGeometries(shell, old); shell.clear(); } // the orb wears no biome shell: the icon is its identity
     this.pools.pickup = this.pickups.filter(p => !p.visible); this.pools.power = this.power.visible ? [] : [this.power];
     return old;
@@ -167,7 +169,7 @@ export class Obstacles {
 
   spawn(type) {
     const g = this.pools[type].pop(); if (!g) return null;
-    const u = g.userData; u.t = 0; u.passed = false; u.hit = false; u.phase = 0;
+    const u = g.userData; u.t = 0; u.passed = false; u.hit = false; u.phase = 0; u.beamOn = false; u.x = u.px = C.SPAWN_X;
     g.position.set(C.SPAWN_X, 0, 0); g.visible = true;
     if (type === 'pickup') this.beamMat.opacity = 0;
     if (type === 'power') { const kinds = Object.keys(this.powerKinds), k = kinds[(this.spawner.rng() * kinds.length) | 0], K = this.powerKinds[k]; u.kind = k; const core = g.getObjectByName('core'); core.material.emissive.setHex(K.color); core.material.color.setHex(K.color); core.getObjectByName('icon').material.map = K.tex; core.getObjectByName('icon').material.needsUpdate = true; }
@@ -175,46 +177,55 @@ export class Obstacles {
   }
 
   // Fills ev: { passed: n, hit: obstacle|null, pickup: bool, hiss: bool, erupt: bool, beam: bool (a pickup's beam just switched on) }
+  // Simulation only (fixed tick): positions live in userData.x, meshes are moved in render(). No traversal, no allocation.
   update(dt, speed, score, shields, ev, robotBoxes) {
     ev.passed = 0; ev.hit = null; ev.pickup = false; ev.power = null; ev.hiss = false; ev.erupt = false; ev.beam = false; (ev.passedTypes ??= []).length = 0;
-    const s = this.hitboxScale; this.applyPlate(dt);
+    const s = this.hitboxScale;
     for (let i = this.active.length - 1; i >= 0; i--) {
-      const g = this.active[i], u = g.userData, d = u.def, body = g.children[0];
-      u.t += dt;
-      g.position.x -= speed * (d.speedMult ?? 1) * dt;
-      // Archetype animation (biome-independent: named children opt in)
-      if (d.fly !== undefined) { body.position.y = d.fly + Math.sin(u.t * 5) * 0.08; body.traverse(o => { if (o.name === 'spin') o.rotation.y += dt * 40; else if (o.name === 'flap') o.rotation.x = (o.userData.base ?? 0) + Math.sin(u.t * 9) * 0.5 * (o.userData.side ?? 1); }); }
-      if (d.speedMult) body.traverse(o => { if (o.name === 'roll') o.rotation.z -= speed * d.speedMult * dt / (o.userData.r ?? 0.55); });
-      body.traverse(o => { if (o.name === 'flicker') o.visible = Math.sin(u.t * 17) + Math.sin(u.t * 5.3) > -0.6; });
-      if (d.pickup) { body.position.y = C.PICKUP_HEIGHT + Math.sin(u.t * Math.PI * 2 * 1.2) * 0.12; body.getObjectByName('ring').rotateZ(dt * 2.4); body.getObjectByName('shell').rotation.y += dt * 1.2;
-        if (!d.power) PICK.core.emissive.setHex(palette.core).lerp(WHITE, 0.5 + 0.5 * Math.sin(u.t * 6)); // white → core-colour pulse
-        const tt = timeToPlayer(g.position.x, speed), on = tt <= C.PICKUP_BEAM_LEAD; if (on && !u.beamOn) ev.beam = true; u.beamOn = on;
-        this.beamMat.opacity = THREE.MathUtils.lerp(this.beamMat.opacity, on && tt > 0 ? 0.55 : 0, Math.min(1, dt * 4)); }
+      const g = this.active[i], u = g.userData, d = u.def;
+      u.t += dt; u.px = u.x;
+      u.x -= speed * (d.speedMult ?? 1) * dt;
+      if (d.pickup) { const tt = timeToPlayer(u.x, speed), on = tt <= C.PICKUP_BEAM_LEAD && tt > 0; if (on && !u.beamOn) ev.beam = true; u.beamOn = on; }
       let dangerous = !d.pickup;
       if (d.telegraph) { // warn HAZARD_TELEGRAPH s before erupting at ~0.9 s away; stay up until passed
-        const tt = timeToPlayer(g.position.x, speed), plume = body.getObjectByName('plume');
-        const phase = tt <= 0.9 ? 2 : tt <= 0.9 + C.HAZARD_TELEGRAPH ? 1 : 0;
+        const tt = timeToPlayer(u.x, speed), phase = tt <= 0.9 ? 2 : tt <= 0.9 + C.HAZARD_TELEGRAPH ? 1 : 0;
         if (phase === 1 && u.phase !== 1) ev.hiss = true; if (phase === 2 && u.phase !== 2) ev.erupt = true; u.phase = phase;
-        if (plume) { plume.visible = phase === 2; if (phase === 2) { plume.scale.y = Math.min(1, plume.scale.y + dt * 6); plume.rotation.y += dt * 3; } else plume.scale.y = 0.05; }
         dangerous = phase === 2;
       }
-      for (const m of u.dbg) { m.visible = C.DEBUG_HITBOXES; if (m.visible) m.scale.set(s, s, 1); }
       // Collision (x/y AABB; depth is cosmetic)
       if (!u.hit && !u.passed && (dangerous || d.pickup)) {
-        for (const b of d.boxes) {
-          const bx = g.position.x + b[0], by = b[1], bw = b[2] * s, bh = b[3] * s;
-          for (const r of robotBoxes) if (Math.abs(bx - r.cx) < (bw + r.w) / 2 && Math.abs(by - r.cy) < (bh + r.h) / 2) {
+        const B = d.boxes;
+        for (let k = 0; k < B.length; k++) {
+          const b = B[k], bx = u.x + b[0], by = b[1], bw = b[2] * s, bh = b[3] * s;
+          for (let j = 0; j < robotBoxes.length; j++) { const r = robotBoxes[j]; if (Math.abs(bx - r.cx) < (bw + r.w) / 2 && Math.abs(by - r.cy) < (bh + r.h) / 2) {
             if (d.power) { ev.power = u.kind; u.passed = true; g.visible = false; } else if (d.pickup) { ev.pickup = true; u.passed = true; g.visible = false; } else { ev.hit = g; u.hit = true; }
             break;
-          }
+          } }
           if (u.hit || u.passed) break;
         }
       }
-      if (!u.passed && !u.hit && !d.pickup && g.position.x + d.halfW < C.ROBOT_X - 0.6) { u.passed = true; ev.passed++; ev.passedTypes.push(d.arch); }
-      if (g.position.x < C.DESPAWN_X || (d.pickup && u.passed)) { g.visible = false; this.active.splice(i, 1); this.pools[u.type].push(g); }
+      if (!u.passed && !u.hit && !d.pickup && u.x + d.halfW < C.ROBOT_X - 0.6) { u.passed = true; ev.passed++; ev.passedTypes.push(d.arch); }
+      if (u.x < C.DESPAWN_X || (d.pickup && u.passed)) { g.visible = false; this.active.splice(i, 1); this.pools[u.type].push(g); }
     }
     if (this.holding) { this.spawner.cooldown = Math.max(this.spawner.cooldown, 0.5); if (this.spawner.last) this.spawner.last.x -= speed * this.spawner.last.mult * dt; return; }
     const type = this.spawner.tick(dt, speed, score, shields < C.SHIELDS_MAX && this.pools.pickup.length > 0, this.pools.power.length > 0 && !this.powerActive);
     if (type) this.spawn(type);
+  }
+  // Per frame: interpolate mesh x between the previous and current tick, and run the cosmetic archetype animation with the frame dt.
+  render(alpha, dt, speed) {
+    this.applyPlate(dt); let beamOn = false, beamTT = 0;
+    for (let i = 0; i < this.active.length; i++) {
+      const g = this.active[i], u = g.userData, d = u.def, a = u.anim, body = g.children[0];
+      g.position.x = u.px + (u.x - u.px) * alpha; const t = u.t + alpha * (1 / C.TICK_RATE);
+      if (d.fly !== undefined) { body.position.y = d.fly + Math.sin(t * 5) * 0.08; for (let k = 0; k < a.spin.length; k++) a.spin[k].rotation.y += dt * 40; for (let k = 0; k < a.flap.length; k++) { const o = a.flap[k]; o.rotation.x = (o.userData.base ?? 0) + Math.sin(t * 9) * 0.5 * (o.userData.side ?? 1); } }
+      if (d.speedMult) for (let k = 0; k < a.roll.length; k++) { const o = a.roll[k]; o.rotation.z -= speed * d.speedMult * dt / (o.userData.r ?? 0.55); }
+      for (let k = 0; k < a.flicker.length; k++) a.flicker[k].visible = Math.sin(t * 17) + Math.sin(t * 5.3) > -0.6;
+      if (d.pickup) { body.position.y = C.PICKUP_HEIGHT + Math.sin(t * Math.PI * 2 * 1.2) * 0.12; u.ring.rotateZ(dt * 2.4); u.shell.rotation.y += dt * 1.2;
+        if (!d.power) PICK.core.emissive.setHex(palette.core).lerp(WHITE, 0.5 + 0.5 * Math.sin(t * 6)); // white → core-colour pulse
+        if (u.beamOn) beamOn = true; }
+      if (d.telegraph && a.plume) { const pl = a.plume; pl.visible = u.phase === 2; if (u.phase === 2) { pl.scale.y = Math.min(1, pl.scale.y + dt * 6); pl.rotation.y += dt * 3; } else pl.scale.y = 0.05; }
+      if (C.DEBUG_HITBOXES !== u.dbgOn) { u.dbgOn = C.DEBUG_HITBOXES; for (const m of u.dbg) { m.visible = C.DEBUG_HITBOXES; m.scale.set(this.hitboxScale, this.hitboxScale, 1); } }
+    }
+    this.beamMat.opacity = THREE.MathUtils.lerp(this.beamMat.opacity, beamOn ? 0.55 : 0, Math.min(1, dt * 4)); void beamTT;
   }
 }

@@ -1,5 +1,6 @@
 // Frame-time instrumentation. No dependencies: a ring buffer of frame / CPU / GPU times, percentile maths, an FPS panel (F) with a
 // rolling graph, and a debug overlay (F3) reading renderer.info plus our own counters. Zero allocation per frame once created.
+import * as THREE from 'three';
 
 const N = 240; // samples kept for the live panel (4 s at 60 Hz)
 export const percentile = (arr, p) => { if (!arr.length) return 0; const s = Float64Array.from(arr).sort(); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; };
@@ -21,6 +22,17 @@ export class Perf {
     this.lastTxt = ''; this.acc = 0; this.frames = 0; this.fps = 0;
   }
   toggle() { this.panel.hidden = !this.panel.hidden; }
+  // ---- Press-to-pixel latency probe (?latency=1): on a press, a white corner quad is drawn in the very next rendered frame and the
+  // input-event → render-submit delta is logged (with the number of frames in between). Budget: under 2 frames.
+  enableLatency() { this.latency = { pending: 0, frames: 0, log: [] }; this.flashScene = new THREE.Scene(); this.flashCam = new THREE.OrthographicCamera(0, 1, 1, 0, 0, 1); const q = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.08), new THREE.MeshBasicMaterial({ color: 0xffffff })); q.position.set(0.95, 0.05, 0); this.flashScene.add(q); }
+  press(timeStamp) { if (this.latency && !this.latency.pending) { this.latency.pending = timeStamp; this.latency.frames = 0; } }
+  // Call right after the frame has been submitted. frameStart = the rAF timestamp of this frame.
+  flash(frameStart) {
+    const L = this.latency; if (!L || !L.pending) return; L.frames++;
+    const auto = this.renderer.autoClear; this.renderer.autoClear = false; this.renderer.render(this.flashScene, this.flashCam); this.renderer.autoClear = auto;
+    const ms = performance.now() - L.pending, entry = { pressToSubmitMs: +ms.toFixed(1), frames: L.frames, frameStartDeltaMs: +(frameStart - L.pending).toFixed(1) };
+    L.log.push(entry); console.log('latency', JSON.stringify(entry)); this.note(`latency ${entry.pressToSubmitMs} ms (${L.frames} frame)`); L.pending = 0;
+  }
   toggleInfo() { this.info.hidden = !this.info.hidden; }
   // Call at the top of the animation loop with the rAF timestamp.
   begin(now) {

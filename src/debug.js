@@ -25,8 +25,8 @@ export function contrastTest(env, { palette = 'normal' } = {}) {
       world.jumpToPhase(phase);
       for (const pal of PALETTE_IDS) {
         setPalette(pal);
-        pick.visible = true; pick.position.set(11, 0, 0); pick.getObjectByName('body').position.y = C.PICKUP_HEIGHT; game.obstacles.beamMat.opacity = 0.55; pick.userData.t = 0.4;
-        game.obstacles.update(0, 0, 0, C.SHIELDS_MAX, {}, []); // runs the pulse/halo animation once at a fixed time
+        pick.visible = true; pick.position.set(11, 0, 0); pick.userData.x = pick.userData.px = 11; pick.getObjectByName('body').position.y = C.PICKUP_HEIGHT; game.obstacles.beamMat.opacity = 0.55; pick.userData.t = 0.4;
+        game.obstacles.active.push(pick); game.obstacles.render(0, 0, 0); game.obstacles.active.pop(); // runs the pulse/halo animation once at a fixed time
         v.set(11, C.PICKUP_HEIGHT, 0).project(camera); const cx = Math.round((v.x + 1) / 2 * size.x), cy = Math.round((v.y + 1) / 2 * size.y);
         v.set(11, C.PICKUP_HEIGHT + 0.5, 0).project(camera); const r = Math.max(3, Math.round(Math.abs((v.y + 1) / 2 * size.y - cy))); // footprint: core + inner halo
         pick.visible = false; renderer.render(scene, camera); const bg = sample(cx, cy, r);

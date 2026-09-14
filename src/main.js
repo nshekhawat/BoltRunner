@@ -111,11 +111,11 @@ export function applyFov(base) {
 }
 let orbitT = 0;
 function updateCamera(dt) {
-  const p = game.player, norm = Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START)));
+  const py = game.renderY, norm = Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START)));
   const narrow = Math.max(0, 1 - camera.aspect); // portrait: pull the framing toward the robot so it is not cut off at the left edge
-  if (photo) { camTarget.set(Math.cos(photoA) * 7 * camDist, photoH, Math.sin(photoA) * 7 * camDist); lookTarget.set(0, 1.0 + p.y * 0.5, 0); }
+  if (photo) { camTarget.set(Math.cos(photoA) * 7 * camDist, photoH, Math.sin(photoA) * 7 * camDist); lookTarget.set(0, 1.0 + py * 0.5, 0); }
   else if (game.state === 'SELECT') { orbitT += dt * 0.22; camTarget.set(Math.cos(orbitT) * 6.5, 2.0 + narrow, Math.sin(orbitT) * 6.5); lookTarget.set(0, 0.2 - narrow * 0.6, 0); } // select screen: slow orbit around the idle robot
-  else { camTarget.set((C.CAMERA_POS[0] + narrow * 3) * camDist, (C.CAMERA_POS[1] + p.y * 0.25) * camDist, (C.CAMERA_POS[2] + narrow * 2) * camDist); lookTarget.set(C.CAMERA_LOOK[0] - narrow * 4, C.CAMERA_LOOK[1] + p.y * 0.35, C.CAMERA_LOOK[2]); }
+  else { camTarget.set((C.CAMERA_POS[0] + narrow * 3) * camDist, (C.CAMERA_POS[1] + py * 0.25) * camDist, (C.CAMERA_POS[2] + narrow * 2) * camDist); lookTarget.set(C.CAMERA_LOOK[0] - narrow * 4, C.CAMERA_LOOK[1] + py * 0.35, C.CAMERA_LOOK[2]); }
   const k = 1 - Math.exp(-C.CAMERA_SPRING * dt);
   camPos.lerp(camTarget, k); camLook.lerp(lookTarget, k);
   shake = Math.max(0, shake - dt);
@@ -126,7 +126,7 @@ function updateCamera(dt) {
 }
 
 // ---- Effects hooks ----------------------------------------------------------------
-const CONFETTI = [0xff5c8a, 0x40e8ff, 0xffe27a, 0x7dff7a, 0xc07dff];
+const CONFETTI = [0xff5c8a, 0x40e8ff, 0xffe27a, 0x7dff7a, 0xc07dff], ROCKET_COLORS = [0xff9a3a, 0xffe27a, 0xffffff];
 game.on('hit', o => { const P = biome.def.particles.impact; shake = C.SHAKE_TIME; fx.emit(0.2, 1.1, 0.3, P.n, P.colors, P.speed, P.gravity, P.life); audio.shieldLost(); audio.impact(biome.def.obstacles[o.userData.def.arch].impact); })
     .on('milestone', () => { fx.emit(0, 1.5, 0.2, 60, CONFETTI, 7, -12, 1.4); audio.milestone(); })
     .on('pickup', () => { fx.emit(0, 1.4, 0.3, 30, [0xffffff, 0x40e8ff], 5, -6, 0.9); audio.pickup(); })
@@ -230,6 +230,7 @@ game.on('break', () => { document.getElementById('break').hidden = false; audio.
 document.getElementById('breakbtn').onclick = () => { document.getElementById('break').hidden = true; game.onBreak = false; game.resume(); audio.uiClick(); };
 game.on('mute', () => settings.set('mute', !settings.s.mute)); // M key / speaker icon route through settings so it persists there
 game.on('perf', () => perf.toggle()).on('perfinfo', () => perf.toggleInfo());
+if (params.get('latency')) { perf.enableLatency(); addEventListener('keydown', e => { if (!e.repeat) perf.press(e.timeStamp); }, true); addEventListener('pointerdown', e => perf.press(e.timeStamp), true); }
 {
   const urlQ = params.get('q');
   if (urlQ && TIERS.includes(urlQ)) { autoQuality = false; setQuality(urlQ); }
@@ -274,34 +275,38 @@ await progress(100, 'Tap or press SPACE to start');
 hud.show(true); loading.classList.add('ready');
 addEventListener('keydown', firstGesture, true); addEventListener('pointerdown', firstGesture, true);
 
+// ---- The loop: fixed 120 Hz simulation on an accumulator, render interpolated between ticks ----------------------------------------
+// Real time × timeScale feeds the accumulator (slow-mo = fewer ticks per second, the tick itself never changes). The accumulator is
+// clamped so a backgrounded tab catches up by at most MAX_ACCUM of simulation. Visual updates (scrolling, particles, camera) advance by
+// exactly the time added to the accumulator, so they stay in lock-step with the interpolated obstacles.
+const TICK = 1 / C.TICK_RATE; let acc = 0;
 let last = performance.now(), frames = 0, fpsT = 0, lowFpsT = 0, breathT = 0, bgT = 0, cpuMs = 0;
 renderer.setAnimationLoop(now => {
   perf.begin(now);
   const raw = (now - last) / 1000, dt = Math.min(raw, C.MAX_DT); last = now; journey.frame(raw, cpuMs); const cpu0 = performance.now();
-  const paused = game.state === 'PAUSED';
-  const P = {}; let pt = performance.now(); const mark = k => { const n = performance.now(); P[k] = +(n - pt).toFixed(1); pt = n; }; P.t = journey.t; P.st = journey.state;
+  const paused = game.state === 'PAUSED'; let ticks = 0;
   if (!paused) {
-    if (bench) bench.tick(dt);
-    game.update(dt * game.timeScale); mark('game'); // timeScale: tutorial beat / slow-mo. HUD timers inside use the same scaled clock (they are brief).
-    const gdt = dt * game.timeScale;
-    if (game.state === 'PLAYING') journey.update(gdt, game.score, game.speed, journeyHooks); mark('journey');
-    world.update(gdt, game.speed, game.score); game.robot.trailBright = world.trailBright; mark('world');
-    fx.update(gdt, game.speed); updateCamera(dt);
-    const br = biome.def.particles.breath; if (br && game.state === 'PLAYING') { breathT += dt; if (breathT > br.every) { breathT = 0; fx.emit(0.4, game.player.y + 1.55, 0.3, 5, br.colors, 0.8, 0.6, 0.9, 0.3); } }
+    const adv = Math.min(raw, C.MAX_ACCUM) * game.timeScale; acc = Math.min(acc + adv, C.MAX_ACCUM);
+    while (acc >= TICK) { acc -= TICK; ticks++; if (bench) bench.tick(TICK); game.tick(TICK); if (game.state === 'PLAYING') journey.tick(TICK, game.score, game.speed, journeyHooks); }
+    const alpha = acc / TICK;
+    game.frame(adv, alpha); journey.render(alpha, adv);
+    world.update(adv, game.speed, game.score); game.robot.trailBright = world.trailBright;
+    fx.update(adv, game.speed); updateCamera(dt);
+    const br = biome.def.particles.breath; if (br && game.state === 'PLAYING') { breathT += dt; if (breathT > br.every) { breathT = 0; fx.emit(0.4, game.renderY + 1.55, 0.3, 5, br.colors, 0.8, 0.6, 0.9, 0.3); } }
     audio.setMood(Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START))), world.cur.stars);
   }
   if (paused && photo) updateCamera(dt);
-  bubble.visible = game.bubble; if (bubble.visible) { bubble.position.set(0, game.player.y + 0.95, 0); bubble.rotation.y += dt; }
-  if (game.rocket && !paused) fx.emit(-0.5, game.player.y + 0.3, 0.2, 3, [0xff9a3a, 0xffe27a, 0xffffff], 4, 2, 0.4, 0.3);
+  bubble.visible = game.bubble; if (bubble.visible) { bubble.position.set(0, game.renderY + 0.95, 0); bubble.rotation.y += dt; }
+  if (game.rocket && !paused) fx.emit(-0.5, game.renderY + 0.3, 0.2, 3, ROCKET_COLORS, 4, 2, 0.4, 0.3);
   if (world.phaseName === 'night' && game.state === 'PLAYING') game.sawNight = true;
   frames++; fpsT += raw; if (fpsT >= 0.5) { const fps = frames / fpsT; frames = 0; fpsT = 0;
     // Auto-downgrade: sustained low FPS during play drops one tier (never while paused or on the first seconds after a switch).
     if (autoQuality && game.state === 'PLAYING' && fps < C.FPS_DOWNGRADE_BELOW) { lowFpsT += 0.5; if (lowFpsT >= C.FPS_DOWNGRADE_AFTER && quality !== 'low') { setQuality(TIERS[TIERS.indexOf(quality) + 1]); hud.message('Quality → ' + quality, 1.2); lowFpsT = -3; } } else lowFpsT = Math.max(0, lowFpsT);
   }
-  mark('misc'); if (quality === 'low') renderer.render(scene, camera); else composer.render(); mark('render');
+  if (quality === 'low') renderer.render(scene, camera); else composer.render(); perf.flash(now);
   bgT += raw; if (bgT > 1.5 && !paused) { bgT = 0; game.obstacles.measureBackground(renderer, camera); } game.obstacles.pollBackground(renderer); // pickup contrast plate follows the real background (async readback)
-  cpuMs = performance.now() - cpu0; if (cpuMs > 12 && journey.active) (window.__slow ??= []).push({ ...P, cpu: +cpuMs.toFixed(1), score: game.score });
-  const pc = perf.counters; pc.obstacles = game.obstacles.active.length; pc.particles = fx.live; pc.pooled = game.obstacles.pooledCount; pc.tier = quality; perf.end();
+  cpuMs = performance.now() - cpu0;
+  const pc = perf.counters; pc.ticks = ticks; pc.obstacles = game.obstacles.active.length; pc.particles = fx.live; pc.pooled = game.obstacles.pooledCount; pc.tier = quality; perf.end();
 });
 window.bolt = { game, world, renderer, scene, camera, journey, perf, setQuality, switchBiome, get biome() { return biome; }, quality: () => quality, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
 // ---- Benchmark mode: no gesture needed, scripted input, JSON report on bolt.bench.done ----

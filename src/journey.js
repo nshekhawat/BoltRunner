@@ -29,20 +29,20 @@ export class Journey {
   get nextId() { return BIOME_IDS[(this.idx + 1) % BIOME_IDS.length]; }
 
   // hooks: prepare(id) → Promise<pending>, swap(pending), discard(pending), hold(bool, exitX), accent(id) → hex
-  update(dt, score, speed, hooks) {
+  tick(dt, score, speed, hooks) {
     if (!this.active) return;
     if (this.state === 'run') {
       if (!this.pending && score >= this.nextAt - C.DAY_CYCLE_POINTS * PREP_LEAD) { const p = { building: true }; this.pending = p; hooks.prepare(this.nextId).then(r => { Object.assign(p, r); p.building = false; }); }
       // Spawn the gateway so its centre reaches the camera as the score crosses nextAt; respect the gap after the last obstacle.
       const len = Math.max(20, speed * GATE_SECONDS), lead = C.SPAWN_X + len / 2;
       if (score >= this.nextAt - lead * C.POINTS_PER_UNIT && canSpawn('small', hooks.last(), speed)) {
-        this.len = len; this.gate.scale.x = len; this.gate.position.x = C.SPAWN_X + len / 2; this.gate.visible = true; this.state = 'gate'; this.swapped = false; this.t = 0;
+        this.len = len; this.gate.scale.x = len; this.x = this.px = C.SPAWN_X + len / 2; this.gate.position.x = this.x; this.gate.visible = true; this.state = 'gate'; this.swapped = false; this.t = 0;
         this.colorA.setHex(hooks.accent(BIOME_IDS[this.idx])); this.colorB.setHex(hooks.accent(this.nextId)); hooks.hold(true);
         this.rings.forEach(r => r.position.x = r.userData.k); // ring at each mouth (scaled with the group)
       }
     } else if (this.state === 'gate') {
-      this.t += dt; this.gate.position.x -= speed * dt; this.streakTex.offset.x -= dt * 1.5;
-      const camX = -3.5, entrance = this.gate.position.x - this.len / 2, exit = this.gate.position.x + this.len / 2;
+      this.t += dt; this.px = this.x; this.x -= speed * dt;
+      const camX = -3.5, entrance = this.x - this.len / 2, exit = this.x + this.len / 2;
       const inside = THREE.MathUtils.clamp((camX - entrance) / this.len, 0, 1);
       this.tube.material.color.lerpColors(this.colorA, this.colorB, inside).multiplyScalar(0.5 + 0.5 * Math.sin(inside * Math.PI)); // brightest mid-tunnel
       this.rings[0].material.color.copy(this.tube.material.color);
@@ -50,6 +50,8 @@ export class Journey {
       if (exit < C.ROBOT_X - 2) { this.gate.visible = false; this.state = 'run'; hooks.hold(false, exit); if (!this.swapped) this.nextAt = score + 200; } // build was too slow: try again shortly
     }
   }
+  // Per frame: interpolate the gate between ticks; scroll the streaks with the frame dt.
+  render(alpha, dt) { if (this.state !== 'gate') return; this.gate.position.x = this.px + (this.x - this.px) * alpha; this.streakTex.offset.x -= dt * 1.5; }
   // Frame-time assertion during the transition (called every frame with the raw dt).
   frame(rawDt, cpuMs) { if (this.state !== 'gate') return; const ms = rawDt * 1000; this.frameMax = Math.max(this.frameMax, ms); if (ms > 20) { this.overruns++; (this.log ??= []).push({ ms: +ms.toFixed(1), cpu: +cpuMs.toFixed(1), t: +this.t.toFixed(2), swapped: this.swapped, swapMs: this.swapMs }); console.assert(false, `Journey transition frame took ${ms.toFixed(1)} ms (> 20 ms)`); } }
 }

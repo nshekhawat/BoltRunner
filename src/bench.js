@@ -24,7 +24,7 @@ export class Bench {
     if (this.state === 'countdown' && g.state === 'PLAYING') { this.state = 'run'; this.t = 0; if (window.gc) gc(); this.heap0 = performance.memory?.usedJSHeapSize ?? 0; this.env.perf.startRecording(); this.mem0 = { ...this.env.renderer.info.memory }; }
     if (this.state !== 'run') return;
     this.t += dt; const speed = g.speed; let nearest = Infinity, mult = 1;
-    for (const o of g.obstacles.active) { const d = o.userData.def; if (d.pickup) continue; const x = o.position.x - d.halfW; if (x > -0.5 && x < nearest) { nearest = x; mult = d.speedMult ?? 1; } }
+    for (const o of g.obstacles.active) { const d = o.userData.def; if (d.pickup) continue; const x = o.userData.x - d.halfW; if (x > -0.5 && x < nearest) { nearest = x; mult = d.speedMult ?? 1; } }
     const lead = speed * mult * AIRTIME * 0.5 + 0.4;
     if (nearest < lead && p.grounded && this.held <= 0) { g.jumpPressed(); this.held = 0.3; } // hold for the full arc
     if (this.held > 0) { this.held -= dt; if (this.held <= 0) p.releaseJump(); }

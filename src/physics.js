@@ -4,7 +4,7 @@ import { CONFIG as C } from './config.js';
 export class Player {
   constructor() { this.reset(); }
   reset() {
-    this.y = C.GROUND_Y; this.vy = 0; this.grounded = true; this.ducking = false;
+    this.y = C.GROUND_Y; this.prevY = C.GROUND_Y; this.vy = 0; this.grounded = true; this.ducking = false;
     this.jumpHeld = false; this.duckHeld = false;
     this.coyote = 0;   // s left in which a jump still counts after leaving the ground
     this.buffer = 0;   // s left in which a buffered jump press still fires on landing
@@ -16,7 +16,7 @@ export class Player {
 
   // Returns { jumped, landed } events for audio/animation. Must be called with clamped dt.
   update(dt) {
-    let jumped = false, landed = false;
+    let jumped = false, landed = false; this.prevY = this.y;
     this.coyote = Math.max(0, this.coyote - dt);
     this.buffer = Math.max(0, this.buffer - dt);
     if (this.buffer > 0 && (this.grounded || this.coyote > 0)) {

@@ -6,7 +6,9 @@ export const CONFIG = {
   JUMP_MIN_HEIGHT: 1.0,  // u. Releasing the key above this height while rising clamps velocity...
   JUMP_CUT_VELOCITY: 8,  // u/s ...to this, giving a short hop for a tap and a full arc for a hold.
   FAST_FALL_MULT: 3,     // Down while airborne multiplies downward velocity by this.
-  MAX_DT: 0.05,          // s. deltaTime clamp so a tab switch never teleports the robot.
+  TICK_RATE: 120,        // Hz. Fixed simulation step (physics, collision, spawning, scoring). Render interpolates between ticks.
+  MAX_ACCUM: 0.25,       // s. Accumulator clamp: a backgrounded tab never runs a death spiral of catch-up ticks.
+  MAX_DT: 0.05,          // s. Clamp for per-frame visual updates (scrolling, particles, camera).
   GROUND_Y: 0,           // u. Robot feet rest here.
 
   // ---- Speed / difficulty --------------------------------------------------

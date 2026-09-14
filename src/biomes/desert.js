@@ -92,6 +92,6 @@ export default {
   pickup: { makePickupShell: (ctx, M) => { const { prim: P } = ctx, g = P.group(); // brass battery cell with cooling fins; core stays visible through the glass
     for (const a of [0, 1, 2, 3]) { const f = P.box(0.06, 0.55, 0.3, M.brass, 0, 0, 0); f.rotation.y = a * Math.PI / 4; f.geometry.translate(0, 0, 0.62); g.add(f); }
     g.add(P.cyl(0.14, 0.14, 0.12, M.brass, 0, 0.66, 0, 10), P.cyl(0.14, 0.14, 0.12, M.brass, 0, -0.66, 0, 10)); return g; } },
-  audio: { musicPreset: 'desert', ambientBed: 'wind', impactTimbre: 'stone', footstepTimbre: 'sand' },
+  audio: { musicPreset: 'desert', impactTimbre: 'stone', footstepTimbre: 'sand' },
   robotAccent: { emissive: 0x30e0ff, trailColor: 0x40e8ff },
 };

@@ -83,6 +83,6 @@ export default {
     for (const tilt of [0.25, -0.25]) { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.035, 6, 32), M.iceRing); ring.lookAt(ctx.viewDir); ring.rotateX(tilt); ring.userData.noOutline = true; g.add(ring); } // open ice cage: rings face the camera, nothing crosses the core
     for (let i = 0; i < 6; i++) { const c = P.cone(0.06, 0.3, M.frost, 0, 0, 0, 5); c.position.set(Math.cos(i * 1.05) * 0.78, Math.sin(i * 2.3) * 0.3, Math.sin(i * 1.05) * 0.78); c.lookAt(c.position.clone().multiplyScalar(3)); c.rotateX(Math.PI / 2); c.userData.noOutline = true; g.add(c); }
     for (let i = 0; i < 3; i++) { const s = P.sphere(0.05, M.snow, Math.cos(i * 2.1) * 0.9, i * 0.25 - 0.25, Math.sin(i * 2.1) * 0.9, 6); s.userData.noOutline = true; g.add(s); } return g; } },
-  audio: { musicPreset: 'frost', ambientBed: 'blizzard', impactTimbre: 'ice', footstepTimbre: 'crunch' },
+  audio: { musicPreset: 'frost', impactTimbre: 'ice', footstepTimbre: 'crunch' },
   robotAccent: { emissive: 0x80e0ff, trailColor: 0xb0f0ff },
 };

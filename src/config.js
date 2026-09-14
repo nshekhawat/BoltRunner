@@ -21,15 +21,14 @@ export const CONFIG = {
   HITBOX_SCALE: { kid: 0.8, normal: 0.9, nofail: 0.8 }, // Collision boxes as a fraction of visual size.
   NOFAIL_HIT_COST: 25,   // Points lost per hit in No-Fail practice mode.
   INVULN_TIME: 0.5,      // s of invulnerability (flashing) after a hit.
-  ASSIST_TIME: 0.32,     // s. Jump Assist acts when an obstacle would arrive within this time and the robot is still grounded.
   SHIELDS_MAX: 3,        // Hearts. Hit = lose one; zero = run ends.
 
   // ---- Scoring -------------------------------------------------------------
   POINTS_PER_UNIT: 1,    // Points per world unit. 1 ≈ the Chrome dino's ~10-25 pts/s. (10 = 1 pt per 0.1 u, but that
                          // scores 120+ pts/s and unlocks everything in seconds — bump MILESTONE etc. ×10 if you want it.)
   MILESTONE: 100,        // Points between chime + confetti.
-  DAY_CYCLE_POINTS: 700, // Points per phase change (day → sunset → night → dawn).
-  DAY_LERP_TIME: 4,      // s to blend between lighting phases.
+  DAY_CYCLE_POINTS: 700, // Journey: points per world change. Lighting itself stays at each world's start phase.
+  DAY_LERP_TIME: 4,      // s to blend lighting when the world changes.
   STORAGE_KEY: 'boltrunner.v2', // localStorage key (bump the version to reset saves).
 
   // ---- Obstacles -----------------------------------------------------------
@@ -47,7 +46,7 @@ export const CONFIG = {
   PICKUP_HEIGHT: 1.2,    // u. Pickup centre height: always in the jump path, never on the ground.
   PICKUP_BEAM_LEAD: 2,   // s before arrival that the vertical light beam telegraphs a pickup.
   POWER_EVERY: 22,       // Roughly one power-up per this many obstacles (never two at once).
-  POWER_TIME: { shield: 8, magnet: 6, slowmo: 5, rocket: 6 }, // s each power-up lasts.
+  POWER_TIME: { shield: 8, slowmo: 5, rocket: 6 }, // s each power-up lasts.
 
   // ---- Camera --------------------------------------------------------------
   CAMERA_POS: [-3.5, 3.8, 9.5],   // u, chase offset from the robot (behind, above, to the side).
@@ -55,14 +54,14 @@ export const CONFIG = {
   MIN_ASPECT_FOV: 1.5,            // Below this aspect ratio (portrait), widen the vertical FOV to keep the same horizontal view.
   FOV_BASE: 50, FOV_PUSH: 10,     // deg; FOV rises by FOV_PUSH at speed cap.
   CAMERA_SPRING: 6,               // Higher = stiffer follow.
-  SHAKE_AMOUNT: 0.35, SHAKE_TIME: 0.35, // u, s. Screen shake on impact.
+  SHAKE_AMOUNT: 0.25, SHAKE_TIME: 0.3, // u, s. Screen shake on impact.
 
   // ---- Audio ---------------------------------------------------------------
   VOLUME: 0.5,           // Default master volume (0..1).
   MUSIC_BPM: 128,        // Fallback tempo; each biome names a music preset in audio.js (tempo, voice, key) nudged up with speed.
 
   // ---- Performance ---------------------------------------------------------
-  MAX_PIXEL_RATIO: 2,
+  MAX_PIXEL_RATIO: 2, MOBILE_PIXEL_RATIO: 1.5, // caps; phones/tablets get the lower one (fill-rate is the bottleneck there)
   FPS_DOWNGRADE_BELOW: 45, FPS_DOWNGRADE_AFTER: 3, // Auto-drop a quality tier if FPS < x for y seconds.
   DEBUG_HITBOXES: false, // Render wireframe collision boxes.
 };

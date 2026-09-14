@@ -38,8 +38,8 @@ test('duck obstacles get extra recovery margin', () => {
 
 test('validatePattern accepts a fair sequence and rejects an unwinnable one', () => {
   const speed = 18, g = MIN_GAP_TIME;
-  assert.equal(validatePattern([{ type: 'small', t: 2 }, { type: 'flyer_mid', t: 2 + g + 0.1 }, { type: 'wide', t: 2 + 2 * g + 0.3 }], speed), null);
-  assert.match(validatePattern([{ type: 'small', t: 2 }, { type: 'flyer_mid', t: 2 + g }], speed) ?? '', /gap/);
+  assert.equal(validatePattern([{ type: 'small', t: 2 }, { type: 'flyer_low', t: 2 + g + 0.1 }, { type: 'wide', t: 2 + 2 * g + 0.3 }], speed), null);
+  assert.match(validatePattern([{ type: 'small', t: 2 }, { type: 'flyer_low', t: 2 + g - 0.1 }], speed) ?? '', /gap/);
   assert.match(validatePattern([{ type: 'wide', t: 2 }, { type: 'tall', t: 2.3 }], speed) ?? '', /gap/);
   assert.match(validatePattern([{ type: 'nope', t: 0 }], speed) ?? '', /unknown/);
 });

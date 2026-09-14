@@ -83,7 +83,7 @@ export class World {
   // score drives the day cycle; speed drives scrolling.
   update(dt, speed, score) {
     this.time += dt; this.speed = speed; const B = this.biome; if (!B) return;
-    this.cycle = Math.floor(score / C.DAY_CYCLE_POINTS); this.setPhase(this.phaseIndex());
+    this.cycle = 0; // lighting stays at the world's start phase (Journey blends to the next world's when it swaps)
     if (this.blend < 1) {
       this.blend = Math.min(1, this.blend + dt / C.DAY_LERP_TIME); const t = this.blend * this.blend * (3 - 2 * this.blend);
       for (const k of COLOR_KEYS) this.cur[k].lerpColors(this.from[k], this.to[k], t); for (const k of NUM_KEYS) this.cur[k] = THREE.MathUtils.lerp(this.from[k], this.to[k], t);

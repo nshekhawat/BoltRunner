@@ -16,5 +16,5 @@ export const UNLOCKS = [
   { at: 110000, kind: 'trail', id: 'rainbow' }, { at: 150000, kind: 'paint', id: 'candy' },
 ];
 export const labelOf = u => u.kind === 'paint' ? PAINTS[u.id].label + ' paint' : u.kind === 'topper' ? TOPPERS[u.id] + ' topper' : TRAILS[u.id].label + ' trail';
-export const unlocked = (kind, id, distance) => { const u = UNLOCKS.find(x => x.kind === kind && x.id === id); return !u || distance >= u.at; };
+export const unlocked = (kind, id, distance) => { const u = UNLOCKS.find(x => x.kind === kind && x.id === id); return !u || distance >= u.at; }; // characters are always unlocked
 export const nextUnlock = distance => UNLOCKS.find(u => u.at > distance) ?? null;

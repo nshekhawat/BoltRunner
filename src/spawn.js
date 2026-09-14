@@ -9,7 +9,6 @@ export const DEFS = {
   tall:       { intro: 0,    action: 'fulljump', boxes: [[0, 0.95, 0.8, 1.9]] },
   wide:       { intro: 250,  action: 'fulljump', boxes: [[0, 0.6, 2.4, 1.2]] },
   flyer_low:  { intro: 500,  action: 'jump',     boxes: [[0, 0.85, 1.0, 0.8]], fly: 0.85, arch: 'flyer' },
-  flyer_mid:  { intro: 500,  action: 'duck',     boxes: [[0, 1.95, 1.0, 0.8]], fly: 1.95, arch: 'flyer' },
   flyer_tall: { intro: 500,  action: 'fulljump', boxes: [[0, 1.45, 1.0, 0.8]], fly: 1.45, arch: 'flyer' },
   hazard:     { intro: 800,  action: 'fulljump', boxes: [[0, 1.0, 1.2, 2.0]], telegraph: true },
   chaser:     { intro: 1000, action: 'jump',     boxes: [[0, 0.55, 1.1, 1.1]], speedMult: C.CHASER_SPEED_MULT },

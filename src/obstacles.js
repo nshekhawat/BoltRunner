@@ -54,12 +54,12 @@ export class Obstacles {
     this.pickups = [0, 1].map(() => this.buildPickup());
     for (const g of this.pickups) { g.visible = false; scene.add(g); }
     // Power-up orb: same recognition layer (plate, rim, beam, bob) with a coloured core and an icon; one instance so two never coexist.
-    this.powerKinds = { shield: { color: 0x4fa0ff, icon: '🛡️' }, magnet: { color: 0xff5a5a, icon: '🧲' }, slowmo: { color: 0xc07dff, icon: '⏳' }, rocket: { color: 0xff9a3a, icon: '🚀' } };
+    this.powerKinds = { shield: { color: 0x4fa0ff, icon: '🛡️' }, slowmo: { color: 0xc07dff, icon: '⏳' }, rocket: { color: 0xff9a3a, icon: '🚀' } };
     for (const k of Object.values(this.powerKinds)) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); x.font = '48px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(k.icon, 32, 36); k.tex = new THREE.CanvasTexture(c); k.tex.colorSpace = THREE.SRGBColorSpace; }
     this.power = this.buildPickup(); this.power.userData.type = 'power'; this.power.userData.def = DEFS.power; this.power.visible = false; scene.add(this.power);
     const pc = this.power.getObjectByName('core'); pc.material = injectHC(PICK.core.clone(), 'obstacle'); pc.userData.own = true;
     const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false })); icon.scale.setScalar(0.62); icon.renderOrder = 14; icon.name = 'icon'; pc.add(icon);
-    this.magnet = false;
+
     this.reset();
   }
 
@@ -160,13 +160,13 @@ export class Obstacles {
   hold(v, exitX) { this.holding = v; if (!v && exitX !== undefined) { this.spawner.last = { x: exitX, mult: 1, action: 'run' }; this.spawner.cooldown = 0.3; } }
   reset() {
     for (const g of this.active) { g.visible = false; this.pools[g.userData.type].push(g); }
-    this.active.length = 0; this.spawner.reset(); this.magnet = false; this.powerActive = false;
+    this.active.length = 0; this.spawner.reset(); this.powerActive = false;
   }
   setDifficulty(mode) { this.hitboxScale = C.HITBOX_SCALE[mode]; }
 
   spawn(type) {
     const g = this.pools[type].pop(); if (!g) return null;
-    const u = g.userData; u.t = 0; u.passed = false; u.hit = false; u.phase = 0; u.assisted = false;
+    const u = g.userData; u.t = 0; u.passed = false; u.hit = false; u.phase = 0;
     g.position.set(C.SPAWN_X, 0, 0); g.visible = true;
     if (type === 'pickup') this.beamMat.opacity = 0;
     if (type === 'power') { const kinds = Object.keys(this.powerKinds), k = kinds[(this.spawner.rng() * kinds.length) | 0], K = this.powerKinds[k]; u.kind = k; const core = g.getObjectByName('core'); core.material.emissive.setHex(K.color); core.material.color.setHex(K.color); core.getObjectByName('icon').material.map = K.tex; core.getObjectByName('icon').material.needsUpdate = true; }
@@ -187,7 +187,6 @@ export class Obstacles {
       body.traverse(o => { if (o.name === 'flicker') o.visible = Math.sin(u.t * 17) + Math.sin(u.t * 5.3) > -0.6; });
       if (d.pickup) { body.position.y = C.PICKUP_HEIGHT + Math.sin(u.t * Math.PI * 2 * 1.2) * 0.12; body.getObjectByName('ring').rotateZ(dt * 2.4); body.getObjectByName('shell').rotation.y += dt * 1.2;
         if (!d.power) PICK.core.emissive.setHex(palette.core).lerp(WHITE, 0.5 + 0.5 * Math.sin(u.t * 6)); // white → core-colour pulse
-        if (this.magnet && g.position.x < 9 && g.position.x > C.ROBOT_X) { g.position.x -= (g.position.x - C.ROBOT_X) * Math.min(1, dt * 5); body.position.y = THREE.MathUtils.lerp(body.position.y, 1.0, Math.min(1, dt * 5)); } // Magnet pulls pickups in
         const tt = timeToPlayer(g.position.x, speed), on = tt <= C.PICKUP_BEAM_LEAD; if (on && !u.beamOn) ev.beam = true; u.beamOn = on;
         this.beamMat.opacity = THREE.MathUtils.lerp(this.beamMat.opacity, on && tt > 0 ? 0.55 : 0, Math.min(1, dt * 4)); }
       let dangerous = !d.pickup;

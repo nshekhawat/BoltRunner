@@ -9,13 +9,11 @@ const LEAD = ('C5 . E5 . G5 . E5 . C5 . D5 . E5 . . . ' + 'A4 . C5 . E5 . C5 . A
 const BASS_ROOTS = ['C3', 'C3', 'F3', 'F3', 'G3', 'G3', 'A3', 'G3'];
 // Music presets named by biome audio.musicPreset: same loop, different voice, tempo, key and brightness.
 const MUSIC = { desert: { lead: 'square', bpm: 128, lp: 1800, semis: 0 }, city: { lead: 'sawtooth', bpm: 116, lp: 1100, semis: -3 }, jungle: { lead: 'triangle', bpm: 138, lp: 2600, semis: 2 }, frost: { lead: 'sine', bpm: 108, lp: 2200, semis: 5 } };
-// Ambient beds named by biome audio.ambientBed: looping filtered noise with a slow gain wobble (+ chirps for the jungle).
-const BEDS = { wind: { type: 'lowpass', f: 380, q: 0.7, g: 0.16, lfo: 0.13, depth: 0.5 }, rain: { type: 'bandpass', f: 2600, q: 0.4, g: 0.11, lfo: 0.4, depth: 0.15 }, jungle: { type: 'bandpass', f: 900, q: 0.5, g: 0.06, lfo: 0.2, depth: 0.3, chirps: true }, blizzard: { type: 'highpass', f: 900, q: 0.5, g: 0.14, lfo: 0.35, depth: 0.6 } };
 // Footstep timbres named by biome audio.footstepTimbre.
 const FOOT = { sand: { type: 'highpass', f: 2500, dur: 0.035, g: 0.06 }, wet: { type: 'bandpass', f: 1400, dur: 0.05, g: 0.09, q: 2 }, soft: { type: 'lowpass', f: 900, dur: 0.04, g: 0.08 }, crunch: { type: 'highpass', f: 4000, dur: 0.06, g: 0.09 } };
 
 export class AudioEngine {
-  constructor() { this.ctx = null; this.muted = !!store.mute; this.tempoMult = 1; this.filterOpen = 0; this.playing = false; this.stepIdx = 0; this.nextStepTime = 0; this.lastStep = 0; this.preset = MUSIC.desert; this.bedName = 'wind'; this.ambienceOn = true; this.vol = { music: 0.32, sfx: 0.9 }; this.bed = null; }
+  constructor() { this.ctx = null; this.muted = !!store.mute; this.tempoMult = 1; this.filterOpen = 0; this.playing = false; this.stepIdx = 0; this.nextStepTime = 0; this.lastStep = 0; this.preset = MUSIC.desert; this.vol = { music: 0.32, sfx: 0.9 }; }
   get unlocked() { return !!this.ctx; }
   unlock() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
@@ -25,7 +23,6 @@ export class AudioEngine {
     this.master.connect(this.comp).connect(ctx.destination);
     this.sfx = ctx.createGain(); this.sfx.gain.value = this.vol.sfx; this.sfx.connect(this.master);
     this.musicBus = ctx.createGain(); this.musicBus.gain.value = this.vol.music;
-    this.bedBus = ctx.createGain(); this.bedBus.gain.value = 1; this.bedBus.connect(this.master);
     this.musicFilter = ctx.createBiquadFilter(); this.musicFilter.type = 'lowpass'; this.musicFilter.frequency.value = 1800; this.musicFilter.Q.value = 0.7;
     this.musicBus.connect(this.musicFilter).connect(this.master);
     const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; this.noiseBuf = buf;
@@ -33,18 +30,7 @@ export class AudioEngine {
   setMuted(m) { this.muted = m; store.mute = m; save(); if (this.master) this.master.gain.setTargetAtTime(m ? 0 : C.VOLUME, this.ctx.currentTime, 0.02); }
   toggleMute() { this.setMuted(!this.muted); return this.muted; }
   setVolumes(music, sfx) { this.vol = { music: music * 0.45, sfx }; if (this.ctx) { this.musicBus.gain.setTargetAtTime(this.vol.music, this.ctx.currentTime, 0.05); this.sfx.gain.setTargetAtTime(sfx, this.ctx.currentTime, 0.05); } }
-  setAmbience(on) { this.ambienceOn = on; if (!on) this.stopBed(); else if (this.playing) this.startBed(); }
-  // Per-biome sound: music preset + ambient bed. Called on every biome switch (also mid-run in Journey).
-  setBiome(a) { this.preset = MUSIC[a.musicPreset] ?? MUSIC.desert; this.bedName = a.ambientBed; if (this.playing) { this.stopBed(); this.startBed(); } }
-  startBed() {
-    if (!this.ctx || this.bed || !this.ambienceOn) return; const ctx = this.ctx, B = BEDS[this.bedName] ?? BEDS.wind, src = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
-    src.buffer = this.noiseBuf; src.loop = true; fl.type = B.type; fl.frequency.value = B.f; fl.Q.value = B.q; g.gain.value = B.g;
-    lfo.frequency.value = B.lfo; lg.gain.value = B.g * B.depth; lfo.connect(lg).connect(g.gain); lfo.start();
-    src.connect(fl).connect(g).connect(this.bedBus); src.start();
-    const chirps = B.chirps ? setInterval(() => { if (Math.random() < 0.5) this.tone({ type: 'sine', f: 1800 + Math.random() * 1500, f2: 2400 + Math.random() * 1200, dur: 0.12, g: 0.04, out: this.bedBus }); }, 700) : null;
-    this.bed = { src, lfo, chirps, g };
-  }
-  stopBed() { if (!this.bed) return; const { src, lfo, chirps, g } = this.bed; this.bed = null; g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3); setTimeout(() => { try { src.stop(); lfo.stop(); } catch { /* already stopped */ } }, 1200); if (chirps) clearInterval(chirps); }
+  setBiome(a) { this.preset = MUSIC[a.musicPreset] ?? MUSIC.desert; } // per-biome music preset
 
   // ---- synth primitives --------------------------------------------------------
   tone({ type = 'square', f = 440, f2, t = 0, dur = 0.1, g = 0.2, a = 0.005, r = 0.05, out = this.sfx, lp }) {
@@ -64,7 +50,6 @@ export class AudioEngine {
   // ---- SFX ------------------------------------------------------------------------
   jump() { if (!this.ctx) return; this.tone({ type: 'square', f: 300, f2: 720, dur: 0.14, g: 0.12 }); this.noise({ type: 'bandpass', f: 900, f2: 2400, dur: 0.18, g: 0.12, q: 0.8 }); }
   land(foot = 'sand') { if (!this.ctx) return; const F = FOOT[foot] ?? FOOT.sand; this.noise({ type: F.type, f: F.f * 0.6, dur: 0.12, g: 0.35 }); this.tone({ type: 'sine', f: 120, f2: 60, dur: 0.08, g: 0.15 }); }
-  duck() { if (!this.ctx) return; this.noise({ type: 'bandpass', f: 2200, f2: 500, dur: 0.14, g: 0.14, q: 1.5 }); }
   shieldLost() { if (!this.ctx) return; this.tone({ type: 'sawtooth', f: 440, f2: 170, dur: 0.38, g: 0.16, lp: 1100, r: 0.2 }); this.noise({ type: 'lowpass', f: 700, dur: 0.2, g: 0.15 }); }
   milestone() { if (!this.ctx) return; [N.C5, N.E5, N.G5].forEach((f, i) => this.tone({ type: 'triangle', f, t: i * 0.09, dur: 0.16, g: 0.16 })); }
   newBest() { if (!this.ctx) return; [N.C5, N.E5, N.G5, N.C6].forEach((f, i) => this.tone({ type: 'triangle', f, t: i * 0.11, dur: i === 3 ? 0.4 : 0.14, g: 0.16 })); }
@@ -91,8 +76,8 @@ export class AudioEngine {
   uiClick() { if (!this.ctx) return; this.tone({ type: 'square', f: 880, dur: 0.05, g: 0.06 }); }
 
   // ---- Music --------------------------------------------------------------------
-  startMusic() { if (!this.ctx || this.playing) return; this.playing = true; this.stepIdx = 0; this.nextStepTime = this.ctx.currentTime + 0.05; this.timer = setInterval(() => this.schedule(), 25); this.startBed(); }
-  stopMusic() { this.playing = false; clearInterval(this.timer); this.stopBed(); }
+  startMusic() { if (!this.ctx || this.playing) return; this.playing = true; this.stepIdx = 0; this.nextStepTime = this.ctx.currentTime + 0.05; this.timer = setInterval(() => this.schedule(), 25); }
+  stopMusic() { this.playing = false; clearInterval(this.timer); }
   // speedNorm 0..1 nudges tempo up; night 0..1 opens the filter.
   setMood(speedNorm, night) { this.tempoMult = 1 + 0.22 * speedNorm; if (this.musicFilter) this.musicFilter.frequency.setTargetAtTime(this.preset.lp + night * 5000, this.ctx.currentTime, 0.5); }
   schedule() {

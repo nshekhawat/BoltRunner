@@ -27,7 +27,6 @@ the network, once, from jsDelivr. Every texture, model and sound is generated in
 | Action | Keyboard | Touch |
 |---|---|---|
 | Jump (hold for a higher jump) | Space, ↑, W (+ one remappable key) | Tap anywhere |
-| Duck / fast-fall | ↓, S (+ one remappable key) | Swipe down, or hold the DUCK button |
 | Pause / resume | P, Escape | Tap the overlay |
 | Browse worlds | ← → then Space / Enter | Swipe the cards, tap to pick |
 | Mute | M | Speaker icon |
@@ -38,7 +37,7 @@ quiet seconds, so a single button (or tap) can pick a world and play.
 Debug keys: `F` shows FPS, quality tier, `renderer.info.memory` counts and the current
 biome/phase; `H` toggles wireframe hitboxes; `D` cycles Kid / Normal / No-Fail on the
 title screen. URL parameters: `?q=low|medium|high` forces a quality tier,
-`?biome=city` starts in a world, `?phase=2` shifts the day/night cycle by two phases.
+`?biome=city` starts in a world.
 `window.bolt` exposes `game`, `world`, `journey`, `switchBiome(id)` and
 `contrastTest()` in the console.
 
@@ -60,14 +59,15 @@ desert transfers to the city.
 | `small` | 0.9 × 1.0 | hop | 0 |
 | `tall` | 0.8 × 1.9 | full jump | 0 |
 | `wide` | 2.4 × 1.2 | full jump | 250 |
-| `flyer` | 1.0 × 0.8 at 0.85 / 1.95 / 1.45 u | hop / duck / full jump | 500 |
+| `flyer` | 1.0 × 0.8 at 0.85 / 1.45 u | hop / full jump | 500 |
 | `hazard` | 1.2 × 2.0, telegraphed 0.6 s | full jump (only while erupting) | 800 |
 | `chaser` | 1.1 × 1.1, moves at speed × 1.15 | hop | 1000 |
 
 **Journey** switches world every 700 points. The next world (textures, materials, obstacle
 pools, compiled shaders) is built on idle callbacks during the previous segment; the robot
 then runs through an enclosed gateway of light and the swap happens while the view is
-enclosed (about 1 ms of scene operations). The day/night cycle continues across the seam.
+enclosed (about 1 ms of scene operations). Each world keeps its own fixed lighting (its
+`startPhase` preset); the swap blends between them.
 Frame time is asserted during every transition (`console.assert` if a frame exceeds 20 ms;
 `bolt.journey.frameMax` and `.log` hold the numbers).
 
@@ -95,14 +95,12 @@ A constant recognition layer plus a decorative shell:
 
 Everything on the settings screen persists in `localStorage` under `boltrunner.v2`.
 
-- Gameplay: Kid / Normal / No-Fail practice (hits only cost points), Jump Assist
-  (auto-jumps when an obstacle is unavoidably close), starting speed.
+- Gameplay: Kid / Normal / No-Fail practice (hits only cost points), starting speed.
 - Visual: quality tier, High-Contrast Mode (scenery desaturated 60 %, obstacles and pickup
-  saturated, scenery bloom off), Reduce Motion, screen shake, colourblind palettes
-  (deuteranopia / protanopia / tritanopia), FPS, camera distance.
-- Audio: music and SFX sliders, master mute, ambience (wind, rain, jungle, blizzard).
-- Controls: extra jump/duck key, left- or right-handed touch layout (side of the DUCK
-  button), hold-to-jump sensitivity.
+  saturated, scenery bloom off), colourblind palettes (deuteranopia / protanopia /
+  tritanopia), FPS, camera distance.
+- Audio: music and SFX sliders, master mute.
+- Controls: extra jump key, hold-to-jump sensitivity.
 - Parent: break reminder at 15 / 30 / 45 minutes (pauses with a gentle card, never locks),
   Reset All Progress behind a confirm.
 
@@ -114,7 +112,9 @@ Everything on the settings screen persists in `localStorage` under `boltrunner.v
 - Ghost: a translucent robot replays your best run in that world (y sampled at 10 Hz,
   stored per world). Toggle in settings.
 - Power-ups (5–8 s, on-screen timer ring, never two at once, same beam telegraph):
-  Shield Bubble, Magnet, Slow-Mo, Rocket Boost.
+  Shield Bubble, Slow-Mo, Rocket Boost.
+- Characters: Bolt, Cubo, Pip and Tank share one rig and the same hitboxes; pick one on
+  the title screen or in the robot panel.
 - Sticker book: lifetime numbers, obstacles cleared by type, and badges.
 - Photo mode on pause: HUD hidden, drag to orbit, saves a PNG from the canvas.
 
@@ -135,7 +135,7 @@ The contract (`SCHEMA` in `schema.js`):
   palette:  { sky, fog, ground, accent, rim, obstacleTints[] },       // hex numbers
   lighting: { keyColor, keyIntensity, hemiSky, hemiGround, fogDensity, exposure, bloomThreshold },
   startPhase,                                  // index into dayNight the world opens on
-  dayNight: [dawn, noon, dusk, night],         // presets: top, horizon, fog, sun, sunI, hemiSky, hemiGround,
+  dayNight: [dawn, noon, dusk, night],         // lighting presets (only startPhase is shown; the others are kept for Journey blends and tools): top, horizon, fog, sun, sunI, hemiSky, hemiGround,
                                                //   hemiI, env, elev, stars, shafts, eyeLight, trail, cloud (+ optional aurora)
   *makeMaterials(ctx),                         // generator: `yield` between expensive textures; returns the material bag M
   ground:   { makeTexture(ctx), makeNormal(ctx), makeRoughness?(ctx), scrollDetail, material },
@@ -146,7 +146,7 @@ The contract (`SCHEMA` in `schema.js`):
                impact: { colors, n, speed, gravity, life }, trail: { colors }, breath?: { colors, every } },
   obstacles: { small, tall, wide, flyer, hazard, chaser },   // each { makeMesh(ctx, M, type), impact: timbre }
   pickup:   { makePickupShell(ctx, M) },
-  audio:    { musicPreset, ambientBed, impactTimbre, footstepTimbre },
+  audio:    { musicPreset, impactTimbre, footstepTimbre },
   robotAccent: { emissive, trailColor },
 }
 ```
@@ -182,7 +182,6 @@ Every number lives in `src/config.js`, each with a comment. The ones that matter
 | `GAP_FACTOR` | 1.4 | Minimum spacing = 1.4 × speed × airtime |
 | `DAY_CYCLE_POINTS` | 700 | Lighting phase change, and Journey's world change |
 | `PICKUP_EVERY` / `POWER_EVERY` | 12 / 22 | Obstacles between pickups / power-ups |
-| `ASSIST_TIME` | 0.32 s | Jump Assist reaction window |
 
 ## How fairness is enforced
 
@@ -242,9 +241,12 @@ test/               node:test unit tests
 check.mjs           headless Chrome harness
 ```
 
-## Quality tiers
+## Quality tiers and performance
 
-High (shadows, bloom, all particles), Medium (shadows, no bloom), Low (no shadows, no
-post-processing, fewer particles). Auto picks a tier from the GPU string and a one-second
+High (1024 px shadows, bloom, all particles), Medium (512 px shadows, no bloom), Low (no
+shadows, no post-processing, fewer particles). High and Medium render through a 4× MSAA
+target (one resolve instead of a three-pass SMAA); Low uses the browser's MSAA directly.
+Pixel ratio is capped at 2 on desktops and 1.5 on touch devices. The robot casts no
+shadow. Materials are precompiled under the active render target before Journey swaps. Auto picks a tier from the GPU string and a one-second
 FPS probe, and drops a tier if FPS stays under 45 for 3 seconds. The settings screen or the
 title-screen button overrides it.

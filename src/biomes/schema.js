@@ -24,7 +24,7 @@ export const SCHEMA = {
   particles: { ambient: [AMBIENT, 0], impact: { colors: 'array', n: 'number', speed: 'number', gravity: 'number', life: 'number' }, trail: { colors: 'array' } },
   obstacles: { small: OBSTACLE, tall: OBSTACLE, wide: OBSTACLE, flyer: OBSTACLE, hazard: OBSTACLE, chaser: OBSTACLE },
   pickup: { makePickupShell: 'function' },
-  audio: { musicPreset: 'string', ambientBed: 'string', impactTimbre: 'string', footstepTimbre: 'string' },
+  audio: { musicPreset: 'string', impactTimbre: 'string', footstepTimbre: 'string' },
   robotAccent: { emissive: 'number', trailColor: 'number' },
 };
 

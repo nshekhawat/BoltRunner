@@ -91,6 +91,6 @@ export default {
     for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) g.add(P.box(0.12, 0.12, 0.12, M.droneDark, x * e, y * e, z * e));
     const trace = P.plane(0.5, 0.08, M.trace, 0, -0.3, e + 0.01); trace.name = 'flicker'; trace.userData.noOutline = true; g.add(trace);
     const pool = P.plane(1.6, 1.6, M.puddleLight, 0, -1.15, 0); pool.rotation.x = -Math.PI / 2; pool.userData.noOutline = true; g.add(pool); return g; } },
-  audio: { musicPreset: 'city', ambientBed: 'rain', impactTimbre: 'metal', footstepTimbre: 'wet' },
+  audio: { musicPreset: 'city', impactTimbre: 'metal', footstepTimbre: 'wet' },
   robotAccent: { emissive: 0xff40c0, trailColor: 0xff60d0 },
 };

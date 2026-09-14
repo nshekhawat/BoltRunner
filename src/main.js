@@ -4,7 +4,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { CONFIG as C } from './config.js';
@@ -24,13 +23,14 @@ import { HC } from './textures.js';
 import { setPalette } from './obstacles.js';
 import { PALETTES } from './palettes.js';
 import { PAINTS, TOPPERS, TRAILS, UNLOCKS, unlocked, nextUnlock, labelOf } from './cosmetics.js';
+import { STYLES } from './robot.js';
 import { STICKERS, earned } from './stickers.js';
 
 const loadBar = document.getElementById('loadbar'), loadText = document.getElementById('loadtext');
 const progress = (pct, text) => { loadBar.style.width = pct + '%'; loadText.textContent = text; return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); };
 
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); // antialias covers the Low tier (direct render)
 renderer.setPixelRatio(Math.min(devicePixelRatio, C.MAX_PIXEL_RATIO));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
@@ -41,7 +41,7 @@ await progress(10, 'Polishing the robot…');
 const shared = makeSharedMaterials();
 const world = new World(scene, shared, camera);
 const game = new Game(scene, shared);
-const params = new URLSearchParams(location.search); world.phaseOffset = +(params.get('phase') ?? 0); // debug: ?phase=2 starts two phases in
+const params = new URLSearchParams(location.search);
 await progress(35, 'Painting the world…');
 let biome = null;
 // Swap the whole environment. Everything the old biome owned is disposed; renderer.info.memory must return to the same numbers.
@@ -78,22 +78,23 @@ async function probeFps(tier) {
 }
 
 // ---- Post-processing ---------------------------------------------------------
-const composer = new EffectComposer(renderer);
+// MSAA on the composer's target replaces the SMAA pass: better edges for a fraction of the cost (one resolve instead of three full-screen passes).
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType }));
 const renderPass = new RenderPass(scene, camera);
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.4, 0.45, 1.15); // threshold above any lit albedo: only emissives bloom
 const vignette = new ShaderPass(VignetteShader); vignette.uniforms.offset.value = 0.6; vignette.uniforms.darkness.value = 1.0; // darkness 1 = mix toward black at the corners only; lower values grey out the whole frame
-const smaa = new SMAAPass(); const output = new OutputPass();
-composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(output); composer.addPass(vignette); composer.addPass(smaa);
+const output = new OutputPass();
+composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(output); composer.addPass(vignette);
 switchBiome(params.get('biome') in BIOMES ? params.get('biome') : 'desert');
-const TIERS = ['high', 'medium', 'low'], motion = { shake: true, reduce: false }; let camDist = 1; // motion: settings (screen shake / reduce motion)
+const TIERS = ['high', 'medium', 'low']; let camDist = 1; // motion: settings (screen shake / reduce motion)
 let quality = 'high', autoQuality = true;
 export function setQuality(q, persist = false) {
   quality = q; hud.quality(q, autoQuality);
   bloom.enabled = q === 'high'; renderer.shadowMap.enabled = q !== 'low';
-  world.sun.castShadow = q !== 'low'; world.sun.shadow.mapSize.setScalar(q === 'high' ? 2048 : 1024); if (world.sun.shadow.map) { world.sun.shadow.map.dispose(); world.sun.shadow.map = null; }
+  world.sun.castShadow = q !== 'low'; world.sun.shadow.mapSize.setScalar(q === 'high' ? 1024 : 512); if (world.sun.shadow.map) { world.sun.shadow.map.dispose(); world.sun.shadow.map = null; }
   scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
-  fx.budget = (q === 'low' ? 0.4 : 1) * (motion.reduce ? 0.5 : 1); for (const s of world.shafts) s.visible = q !== 'low';
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'low' ? 1 : C.MAX_PIXEL_RATIO)); resize();
+  fx.budget = q === 'low' ? 0.4 : 1; for (const s of world.shafts) s.visible = q !== 'low';
+  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'low' ? 1 : matchMedia('(pointer: coarse)').matches ? C.MOBILE_PIXEL_RATIO : C.MAX_PIXEL_RATIO)); resize();
 }
 
 // ---- Camera -------------------------------------------------------------------
@@ -114,10 +115,10 @@ function updateCamera(dt) {
   const k = 1 - Math.exp(-C.CAMERA_SPRING * dt);
   camPos.lerp(camTarget, k); camLook.lerp(lookTarget, k);
   shake = Math.max(0, shake - dt);
-  const sh = shake > 0 && motion.shake && !motion.reduce ? C.SHAKE_AMOUNT * (shake / C.SHAKE_TIME) : 0;
+  const sh = shake > 0 ? C.SHAKE_AMOUNT * (shake / C.SHAKE_TIME) : 0;
   camera.position.set(camPos.x + (Math.random() - 0.5) * sh, camPos.y + (Math.random() - 0.5) * sh, camPos.z);
   camera.lookAt(camLook);
-  applyFov(C.FOV_BASE + (motion.reduce ? 0 : C.FOV_PUSH * norm));
+  applyFov(C.FOV_BASE + C.FOV_PUSH * norm);
 }
 
 // ---- Effects hooks ----------------------------------------------------------------
@@ -128,7 +129,7 @@ game.on('hit', o => { const P = biome.def.particles.impact; shake = C.SHAKE_TIME
     .on('land', () => { fx.emit(0, 0.05, 0.2, 8, biome.def.particles.trail.colors, 3, -8, 0.5, 0.4); audio.land(biome.def.audio.footstepTimbre); })
     .on('erupt', () => { const v = game.obstacles.active.find(o => o.userData.def.telegraph && o.userData.phase === 2); if (v) fx.emit(v.position.x, 0.5, 0, 30, [0xffffff, 0xe0f0ff], 4, 3, 1.2, 0.3); audio.erupt(); })
     .on('tutorial', () => audio.pickup())
-    .on('jump', () => audio.jump()).on('duck', () => audio.duck()).on('step', s => audio.step(s, biome.def.audio.footstepTimbre)).on('hiss', () => audio.hiss())
+    .on('jump', () => audio.jump()).on('step', s => audio.step(s, biome.def.audio.footstepTimbre)).on('hiss', () => audio.hiss())
     .on('countdown', i => audio.countdown(i)).on('click', () => audio.uiClick()).on('newbest', () => audio.newBest())
     .on('state', s => { if (s === 'PLAYING') audio.startMusic(); else if (s === 'CRASHED' || s === 'MENU') audio.stopMusic(); console.log('state', s); })
     .on('crashed', s => console.log('crashed', JSON.stringify(s)));
@@ -147,7 +148,7 @@ const journey = new Journey(scene, shared);
 // Shader programs differ between on-screen and render-target output (tone mapping lives in the shader), so compile under the target the tier renders to.
 const parallelCompile = !!renderer.getContext().getExtension('KHR_parallel_shader_compile');
 async function compileFor(obj) { renderer.setRenderTarget(quality === 'low' ? null : composer.readBuffer); try { parallelCompile ? await renderer.compileAsync(obj, camera, scene) : renderer.compile(obj, camera, scene); } finally { renderer.setRenderTarget(null); } }
-journey.gate.visible = true; await compileFor(journey.gate); journey.gate.visible = false; // no shader compile on the first gateway
+journey.gate.visible = true; await compileFor(journey.gate); journey.gate.position.x = 900; if (quality === 'low') renderer.render(scene, camera); else composer.render(); journey.gate.visible = false; // warm the gateway's programs + GPU state once at load
 // Everything the swap needs, built on idle time: biome instance, obstacle pools, and compiled shaders. The swap itself is then a few scene ops.
 async function preparePending(id) {
   const inst = await prepareBiome(id);
@@ -164,7 +165,7 @@ const journeyHooks = {
   discard: p => { if (p.pools) for (const g of Object.values(p.pools.pools).flat()) g.traverse(o => o.geometry?.dispose()); if (p.inst) disposeBiome(p.inst); },
   hold: (v, exitX) => game.obstacles.hold(v, exitX), last: () => game.obstacles.spawner.last, accent: id => BIOMES[id].palette.accent,
 };
-game.on('state', s => { if (s === 'PLAYING' && game.prevState === 'COUNTDOWN') { if (game.journey) { journey.begin(biome.def.id); world.startPhaseOverride = biome.def.startPhase; } else journey.end(journeyHooks); } else if (s === 'CRASHED' || s === 'MENU' || s === 'SELECT') { journey.end(journeyHooks); world.startPhaseOverride = null; } });
+game.on('state', s => { if (s === 'PLAYING' && game.prevState === 'COUNTDOWN') { if (game.journey) journey.begin(biome.def.id); else journey.end(journeyHooks); } else if (s === 'CRASHED' || s === 'MENU' || s === 'SELECT') journey.end(journeyHooks); });
 
 // ---- Select screen ---------------------------------------------------------------------------------------------
 let highlightToken = 0;
@@ -195,20 +196,16 @@ const settings = new Settings({
   apply(key, v, initial, S) {
     switch (key) {
       case 'difficulty': game.setMode(v); break;
-      case 'jumpAssist': game.jumpAssist = v; break;
       case 'startSpeed': game.startSpeed = v; break;
       case 'quality': if (initial) break; if (v === 'auto') autoTier(); else { autoQuality = false; setQuality(v); } break;
       case 'highContrast': HC.desat.value = v ? 0.6 : 0; HC.sat.value = v ? 0.6 : 0; document.body.classList.toggle('hc', v); bloom.threshold = v ? 3 : biome.def.lighting.bloomThreshold; break; // bloom off for scenery: only the pickup core exceeds 3
-      case 'reduceMotion': motion.reduce = v; fx.budget = (quality === 'low' ? 0.4 : 1) * (v ? 0.5 : 1); break;
-      case 'screenShake': motion.shake = v; break;
       case 'palette': setPalette(v); document.documentElement.style.setProperty('--heart', PALETTES[v].heart); document.documentElement.style.setProperty('--accent', PALETTES[v].accent); break;
       case 'showFps': hud.el.fps.hidden = !v; break;
       case 'cameraDistance': camDist = v; break;
       case 'mute': audio.setMuted(v); hud.muted(v); break;
       case 'music': case 'sfx': audio.setVolumes(S.s.music, S.s.sfx); break;
-      case 'ambience': audio.setAmbience(v); break;
-      case 'jumpKey': case 'duckKey': game.setKeys(S.s.jumpKey, S.s.duckKey); break;
-      case 'touchLayout': document.body.classList.toggle('hand-left', v === 'left'); document.body.classList.toggle('hand-right', v !== 'left'); break;
+      case 'jumpKey': game.setKeys(v); break;
+      case 'character': game.robot.setStyle(v); game.ghost.setStyle(v); break;
       case 'holdSensitivity': C.JUMP_MIN_HEIGHT = { short: 0.6, normal: 1.0, long: 1.6 }[v] ?? 1.0; break;
       case 'sessionMinutes': game.sessionLimit = v * 60; break;
       case 'ghost': game.ghostOn = v; break;
@@ -237,12 +234,16 @@ game.on('mute', () => settings.set('mute', !settings.s.mute)); // M key / speake
 // ---- My robot (cosmetics) + sticker book + photo mode ----------------------------------------------------------------
 const robotCard = document.getElementById('robotcard'), robotBody = robotCard.querySelector('.body'), robotBar = document.getElementById('robotbar');
 function renderRobotCard() {
-  const D = store.lifetime.distance, row = (kind, items, cur) => `<div class="row"><div class="lbl">${{ paint: 'Paint', topper: 'Antenna topper', trail: 'Trail' }[kind]}</div><div class="ctl">${Object.entries(items).map(([id, it]) => { const ok = unlocked(kind, id, D), u = UNLOCKS.find(x => x.kind === kind && x.id === id); return `<button class="pill ${id === cur ? 'on' : ''} ${ok ? '' : 'lock'}" data-kind="${kind}" data-id="${id}" ${ok ? '' : 'disabled'}>${ok ? '' : '🔒 '}${typeof it === 'string' ? it : it.label}${ok ? '' : ` · ${u.at.toLocaleString()} m`}</button>`; }).join('')}</div></div>`;
-  robotBody.innerHTML = row('paint', PAINTS, settings.s.paint) + row('topper', TOPPERS, settings.s.topper) + row('trail', TRAILS, settings.s.trail);
+  const D = store.lifetime.distance, row = (kind, items, cur) => `<div class="row"><div class="lbl">${{ character: 'Character', paint: 'Paint', topper: 'Antenna topper', trail: 'Trail' }[kind]}</div><div class="ctl">${Object.entries(items).map(([id, it]) => { const ok = unlocked(kind, id, D), u = UNLOCKS.find(x => x.kind === kind && x.id === id); return `<button class="pill ${id === cur ? 'on' : ''} ${ok ? '' : 'lock'}" data-kind="${kind}" data-id="${id}" ${ok ? '' : 'disabled'}>${ok ? '' : '🔒 '}${typeof it === 'string' ? it : it.label}${ok ? '' : ` · ${u.at.toLocaleString()} m`}</button>`; }).join('')}</div></div>`;
+  robotBody.innerHTML = row('character', STYLES, settings.s.character) + row('paint', PAINTS, settings.s.paint) + row('topper', TOPPERS, settings.s.topper) + row('trail', TRAILS, settings.s.trail);
   const nx = nextUnlock(D); robotBar.querySelector('.txt').textContent = nx ? `Next unlock: ${labelOf(nx)} at ${nx.at.toLocaleString()} m (${D.toLocaleString()} m so far)` : 'Every cosmetic unlocked!'; robotBar.querySelector('.bar div').style.width = nx ? (100 * D / nx.at) + '%' : '100%';
 }
 robotBody.addEventListener('click', e => { const b = e.target.closest('button[data-kind]'); if (!b || b.disabled) return; settings.set(b.dataset.kind, b.dataset.id); renderRobotCard(); audio.uiClick(); });
 document.getElementById('robotbtn').onclick = e => { e.stopPropagation(); renderRobotCard(); robotCard.hidden = false; audio.uiClick(); };
+// Title screen: pick a character before playing.
+const charRow = document.getElementById('charrow'); charRow.innerHTML = Object.entries(STYLES).map(([id, s]) => `<button class="pill" data-char="${id}">${s.label}</button>`).join('');
+const renderChars = () => charRow.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.char === settings.s.character)); renderChars();
+charRow.addEventListener('click', e => { const b = e.target.closest('button[data-char]'); if (!b) return; settings.set('character', b.dataset.char); renderChars(); audio.uiClick(); });
 document.getElementById('robotclose').onclick = () => { robotCard.hidden = true; audio.uiClick(); };
 game.on('state', s => { if (s === 'SELECT') renderRobotCard(); });
 document.getElementById('statsbtn').onclick = () => { hud.stats(true, store.lifetime, store.records, earned(store.lifetime, store.records), STICKERS); audio.uiClick(); };

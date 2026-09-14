@@ -22,7 +22,7 @@ export const hud = {
   fps(text) { el.fps.textContent = text; },
   toggleFps() { el.fps.hidden = !el.fps.hidden; },
   biome(def) { document.title = `Bolt Runner · ${def.displayName}`; },
-  power(kind, frac = 0) { el.power.hidden = !kind; if (!kind) return; el.powerIcon.textContent = { shield: '🛡️', magnet: '🧲', slowmo: '⏳', rocket: '🚀' }[kind]; el.powerArc.style.strokeDashoffset = String(157 * (1 - frac)); },
+  power(kind, frac = 0) { el.power.hidden = !kind; if (!kind) return; el.powerIcon.textContent = { shield: '🛡️', slowmo: '⏳', rocket: '🚀' }[kind]; el.powerArc.style.strokeDashoffset = String(157 * (1 - frac)); },
   // Stats + sticker book. L = store.lifetime, R = store.records, stickers = earned list, all = full sticker list.
   stats(v, L, R, stickers, all) {
     el.stats.hidden = !v; if (!v) return;

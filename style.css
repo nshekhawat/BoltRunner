@@ -82,11 +82,7 @@ button { font:inherit; font-weight:900; color:#fff; border:0; cursor:pointer; te
 .card.settings .pill.waiting { animation:pulse .8s infinite; }
 .card.settings input[type=range] { width:min(40vw,200px); accent-color:#4ff0ff; height:40px; }
 .card.settings .big { margin-top:10px; }
-.touchbtn { position:absolute; bottom:max(18px,env(safe-area-inset-bottom)); pointer-events:auto; display:none; padding:18px 22px; border-radius:24px; background:rgba(0,0,0,.35); border:3px solid rgba(255,255,255,.5); font-size:clamp(16px,4vw,22px); }
-.touchbtn:active { background:rgba(79,240,255,.5); }
-body.touch .touchbtn { display:block; }
-body.hand-right .touchbtn { right:16px; } body.hand-right #mutebtn { right:auto; left:16px; bottom:12px; } body.hand-right #fps { left:80px; }
-body.hand-left .touchbtn { left:16px; }
+#charrow .pill { padding:6px 14px; }
 body.hc #hud, body.hc .card { text-shadow:0 0 4px #000, 0 2px 0 #000; }
 
 /* ---- progression ---- */

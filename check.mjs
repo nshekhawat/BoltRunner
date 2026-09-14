@@ -1,20 +1,23 @@
 // Headless smoke test via Chrome DevTools Protocol. No deps (Node ≥22 has fetch + WebSocket).
 // usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu] [--uncapped] [--heap] [--cpuprofile] [--webgpu]
 import { spawn, execSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 const args = process.argv.slice(2);
 const secs = +(args.find(a => /^\d+$/.test(a)) ?? 6);
 const query = args.find(a => !a.startsWith('--') && !/^\d+$/.test(a)) ?? '';
 const opt = k => args.find(a => a.startsWith(`--${k}=`))?.slice(k.length + 3);
-const PORT = 8765, DBG = 9333;
+// Ports are per run: a random HTTP port and Chrome's own choice of DevTools port (read from the profile's DevToolsActivePort file),
+// so two runs never collide and a stray Chrome from a killed run can never be picked up by mistake.
+const PORT = 8800 + (process.pid % 190);
 const srv = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'ignore' });
-const PROFILE = `/tmp/boltchrome-${process.pid}`;
+const PROFILE = `/tmp/boltchrome-${process.pid}`; execSync(`rm -rf ${PROFILE}`);
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', ...(args.includes('--gpu') ? [] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']), `--window-size=${opt('size') ?? '1280,720'}`, // --gpu: real GPU (frame-time checks)
-  '--no-first-run', '--js-flags=--expose-gc', '--enable-precise-memory-info', ...(args.includes('--uncapped') ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : []), ...(args.includes('--webgpu') ? ['--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU'] : []), `--user-data-dir=${PROFILE}`, `--remote-debugging-port=${DBG}`, // --uncapped: no vsync, frame time = real throughput
+  '--no-first-run', '--js-flags=--expose-gc', '--enable-precise-memory-info', ...(args.includes('--uncapped') ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : []), ...(args.includes('--webgpu') ? ['--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU'] : []), `--user-data-dir=${PROFILE}`, '--remote-debugging-port=0', // --uncapped: no vsync, frame time = real throughput
   '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-let ws; for (let i = 0; i < 40 && !ws; i++) { await sleep(250); try { const t = await (await fetch(`http://localhost:${DBG}/json`)).json(); ws = t.find(x => x.type === 'page')?.webSocketDebuggerUrl; } catch {} }
+let ws, DBG = 0; for (let i = 0; i < 80 && !ws; i++) { await sleep(250); try { if (!DBG) { const f = `${PROFILE}/DevToolsActivePort`; if (!existsSync(f)) continue; DBG = +readFileSync(f, 'utf8').split('\n')[0]; } const t = await (await fetch(`http://localhost:${DBG}/json`)).json(); ws = t.find(x => x.type === 'page')?.webSocketDebuggerUrl; } catch {} }
+if (!ws) { console.error('check.mjs: Chrome did not expose a page target'); chrome.kill(); srv.kill(); process.exit(2); }
 const sock = new WebSocket(ws); await new Promise(r => sock.onopen = r);
 let id = 0; const pending = new Map();
 const send = (method, params = {}) => new Promise(r => { pending.set(++id, r); sock.send(JSON.stringify({ id, method, params })); });

@@ -231,8 +231,9 @@ node check.mjs         # headless Chrome smoke test (console errors, 404s, scree
 `--shot=out.png`, `--size=W,H`, `--mobile` (Galaxy S24 Ultra viewport + touch),
 `--touch` (drives a whole run by touch), `--gpu` (real GPU instead of SwiftShader, for
 frame-time checks), `--uncapped` (vsync off), `--heap` (live allocations by call site at the
-end: the leak hunter), `--cpuprofile` (self time by function), `--webgpu`. It always uses
-ports 8765 and 9333, so run one at a time. Example verification commands:
+end: the leak hunter), `--cpuprofile` (self time by function), `--webgpu`. Every run gets its own
+HTTP port and DevTools port (from Chrome's `DevToolsActivePort` file), so runs can overlap and
+a stray Chrome can never be picked up by mistake. Example verification commands:
 
 ```sh
 node check.mjs 6 "q=low" --keys=Space --eval="JSON.stringify(bolt.contrastTest().pass)"

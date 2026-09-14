@@ -10,7 +10,7 @@ const report = { date: new Date().toISOString(), label: opt('label', ''), vsync:
 for (const tier of tiers) {
   const q = `bench=1&q=${tier}&secs=${secs}${biomes ? '&biomes=' + biomes : ''}${args.includes('--webgpu') ? '&webgpu=1' : ''}`;
   process.stderr.write(`▶ ${tier} (${q})\n`);
-  const r = spawnSync('node', ['check.mjs', '1', q, '--gpu', ...(args.includes('--vsync') ? [] : ['--uncapped']), ...(args.includes('--webgpu') ? ['--webgpu'] : []), '--eval=bolt.bench.done'], { encoding: 'utf8', maxBuffer: 1 << 26, timeout: (secs * 5 + 90) * 1000 });
+  const r = spawnSync('node', ['check.mjs', '1', q, '--gpu', ...(args.includes('--vsync') ? [] : ['--uncapped']), ...(args.includes('--webgpu') ? ['--webgpu'] : []), '--eval=bolt.bench.done'], { encoding: 'utf8', maxBuffer: 1 << 26, timeout: (secs * 9 + 180) * 1000 });
   const line = r.stdout.split('\n').find(l => l.startsWith('[eval] '));
   if (!line) { console.error(r.stdout, r.stderr); process.exit(1); }
   report.tiers[tier] = JSON.parse(line.slice(7));

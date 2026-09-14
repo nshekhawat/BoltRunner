@@ -373,6 +373,14 @@ Apple M3, Chrome headless with the real GPU, 1280×720. `perf/baseline.json` is 
 | M6–M9 fill rate, controller, juice, chunks | 62 / 92 / 81 / 68 | 2.6 / 2.6 / 2.7 / 2.5 | 1.6 / 1.6 / 1.1 / 1.2 | 114 / 86 / 83 / 98 | 140 / 189 / 203 / 230 |
 | **v3 final (60 s, `perf/current.json`)** | 63 / 91 / 81 / 70 | 2.9 / 2.6 / 2.6 / 2.5 | 1.4 / 1.3 / 0.9 / 0.8 | 394 / 81 / 66 / 67 | 111 / 239 / 172 / 215 |
 
+Definition-of-done run with **vsync** (`perf/current-vsync.json`, 60 s per biome + 90 s Journey, all
+three tiers): every one of the 15 tier × biome combinations reports frame p50 / p95 / p99 / max =
+16.7 / 16.7 / 16.8 / 16.8 ms, 1 % low 59.5 FPS, zero frames over 25 ms, zero GC frames over 5 ms,
+`renderer.info.memory` identical at 0 s and 60 s, Journey worst frame 16.8 ms across two
+transitions. CPU p95 is 2.8–3.4 ms on every tier; GPU p50 is 1.5–1.9 ms (Low), 2.1–2.6 ms
+(Medium), 6.5–9.3 ms (High, bloom + 1024 px shadows). Draw calls: 52–77 (Low), 64–91 (Medium),
+78–104 (High; the bloom chain alone is 12).
+
 (The M4 worst frames are the first-draw shader stalls that M5 removed; the M6–M9 worst
 frames are uncapped queue flushes — with vsync the same runs have no frame over 16.8 ms.)
 Journey with vsync: 90 s, two transitions, worst frame 16.8 ms, swap 2.2 ms (v2.1: frames

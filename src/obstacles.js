@@ -3,7 +3,7 @@
 // (core, ring, halo, beam) is built here and is identical everywhere; the biome adds a decorative shell around it.
 import * as THREE from 'three';
 import { CONFIG as C } from './config.js';
-import { DEFS, Spawner, checkClearable, leadTime, REQUIRED_LEAD, timeToPlayer } from './spawn.js';
+import { DEFS, Spawner, checkClearable, checkChunks, leadTime, REQUIRED_LEAD, timeToPlayer } from './spawn.js';
 import { PALETTES } from './palettes.js';
 import { injectHC } from './textures.js';
 import { mergeStatic } from './merge.js';
@@ -11,6 +11,7 @@ import { mergeStatic } from './merge.js';
 // Startup assertions: geometry and lead time must be provably fair, not eyeballed.
 {
   const bad = checkClearable(); console.assert(bad.length === 0, 'Unclearable obstacles:', bad);
+  const badChunks = checkChunks(); if (badChunks.length) throw new Error('Level chunks are not clearable at max speed:\n  - ' + badChunks.join('\n  - ')); // refuse to start
   for (const cap of Object.values(C.SPEED_CAP)) for (const [n, d] of Object.entries(DEFS))
     console.assert(leadTime(cap, d.speedMult ?? 1) >= REQUIRED_LEAD, `Lead time too short for ${n} at ${cap} u/s`);
 }
@@ -120,7 +121,7 @@ export class Obstacles {
     for (const [type, list] of Object.entries(this.pools)) if (type !== 'pickup' && type !== 'power') for (const g of list) { collectGeometries(g, old); this.scene.remove(g); } // pickups persist; only their shell changes
     for (const g of this.active) if (g.userData.type !== 'pickup') { collectGeometries(g, old); this.scene.remove(g); }
     this.active = this.active.filter(g => g.userData.type === 'pickup');
-    this.biome = inst; this.outlineMat.color.setHex(inst.def.palette.rim); this.rimMat.color.copy(complement(inst.def.palette.sky)); this.beamMat.color.copy(this.rimMat.color); this.setBackgroundLuminance(this.sceneL); this.applyPlate(0);
+    this.biome = inst; this.spawner.setFlavour(inst.def.chunkWeights); this.outlineMat.color.setHex(inst.def.palette.rim); this.rimMat.color.copy(complement(inst.def.palette.sky)); this.beamMat.color.copy(this.rimMat.color); this.setBackgroundLuminance(this.sceneL); this.applyPlate(0);
     const { pools, shells } = prebuilt ?? (() => { const g = this.buildPools(inst); let r; do r = g.next(); while (!r.done); return r.value; })();
     this.pools = pools; for (const list of Object.values(pools)) for (const g of list) this.scene.add(g);
     this.pickups.forEach((p, i) => { const shell = p.getObjectByName('shell'); collectGeometries(shell, old); shell.clear(); shell.add(shells[i]); p.userData.anim = animParts(p.children[0]); });
@@ -171,7 +172,7 @@ export class Obstacles {
 
   spawn(type) {
     const g = this.pools[type].pop(); if (!g) return null;
-    const u = g.userData; u.t = 0; u.passed = false; u.hit = false; u.phase = 0; u.beamOn = false; u.x = u.px = C.SPAWN_X;
+    const u = g.userData; u.t = 0; u.passed = false; u.hit = false; u.phase = 0; u.beamOn = false; u.x = u.px = C.SPAWN_X; u.minClear = 1e9;
     g.position.set(C.SPAWN_X, 0, 0); g.visible = true;
     if (type === 'pickup') this.beamMat.opacity = 0;
     if (type === 'power') { const kinds = Object.keys(this.powerKinds), k = kinds[(this.spawner.rng() * kinds.length) | 0], K = this.powerKinds[k]; u.kind = k; const core = g.getObjectByName('core'); core.material.emissive.setHex(K.color); core.material.color.setHex(K.color); core.getObjectByName('icon').material.map = K.tex; core.getObjectByName('icon').material.needsUpdate = true; }
@@ -181,7 +182,8 @@ export class Obstacles {
   // Fills ev: { passed: n, hit: obstacle|null, pickup: bool, hiss: bool, erupt: bool, beam: bool (a pickup's beam just switched on) }
   // Simulation only (fixed tick): positions live in userData.x, meshes are moved in render(). No traversal, no allocation.
   update(dt, speed, score, shields, ev, robotBoxes) {
-    ev.passed = 0; ev.hit = null; ev.pickup = false; ev.power = null; ev.hiss = false; ev.erupt = false; ev.beam = false; (ev.passedTypes ??= []).length = 0;
+    ev.passed = 0; ev.hit = null; ev.pickup = false; ev.power = null; ev.hiss = false; ev.erupt = false; ev.beam = false; ev.nearMiss = 0; (ev.passedTypes ??= []).length = 0;
+    const feet = robotBoxes.length ? robotBoxes[1].cy - robotBoxes[1].h / 2 : 1e9; // the lowest hitbox bottom: what would clip an obstacle first
     const s = this.hitboxScale;
     for (let i = this.active.length - 1; i >= 0; i--) {
       const g = this.active[i], u = g.userData, d = u.def;
@@ -206,7 +208,8 @@ export class Obstacles {
           if (u.hit || u.passed) break;
         }
       }
-      if (!u.passed && !u.hit && !d.pickup && u.x + d.halfW < C.ROBOT_X - 0.6) { u.passed = true; ev.passed++; ev.passedTypes.push(d.arch); }
+      if (dangerous && !u.hit && !u.passed && Math.abs(u.x - C.ROBOT_X) < d.halfW + 0.4) { const c = feet - d.top; if (c < u.minClear) u.minClear = c; } // clearance while overlapping horizontally
+      if (!u.passed && !u.hit && !d.pickup && u.x + d.halfW < C.ROBOT_X - 0.6) { u.passed = true; ev.passed++; ev.passedTypes.push(d.arch); if (u.minClear < C.NEAR_MISS_DIST && u.minClear > -1) ev.nearMiss++; }
       if (u.x < C.DESPAWN_X || (d.pickup && u.passed)) { g.visible = false; this.active.splice(i, 1); this.pools[u.type].push(g); }
     }
     if (this.holding) { this.spawner.cooldown = Math.max(this.spawner.cooldown, 0.5); if (this.spawner.last) this.spawner.last.x -= speed * this.spawner.last.mult * dt; return; }

@@ -56,7 +56,23 @@ export const CONFIG = {
   MIN_ASPECT_FOV: 1.5,            // Below this aspect ratio (portrait), widen the vertical FOV to keep the same horizontal view.
   FOV_BASE: 50, FOV_PUSH: 10,     // deg; FOV rises by FOV_PUSH at speed cap.
   CAMERA_SPRING: 6,               // Higher = stiffer follow.
-  SHAKE_AMOUNT: 0.25, SHAKE_TIME: 0.3, // u, s. Screen shake on impact.
+  // ---- Game feel ("juice"): every player action gets a simultaneous visual, audio and motion response, all specified here ----
+  HITSTOP_MS: 70,              // ms the simulation freezes on an obstacle impact (audio keeps playing). Weight.
+  SQUASH_LAUNCH: [1.15, 0.9],  // [vertical, horizontal] scale at jump launch …
+  SQUASH_LAUNCH_MS: 80,        // … reached over this many ms, then eased back over SQUASH_RELEASE_MS.
+  SQUASH_LAND: [0.85, 1.15],   // inverted on landing …
+  SQUASH_LAND_MS: 80,          // … over this long …
+  SQUASH_RELEASE_MS: 120,      // … then eased back.
+  TRAUMA_HIT: 0.55,            // trauma (0–1) added by an obstacle impact. Shake amplitude = trauma² × SHAKE_MAX.
+  TRAUMA_LAND: 0.12,           // trauma added by a landing (barely felt: a thump, not a quake).
+  TRAUMA_DECAY: 1.5,           // trauma lost per second.
+  SHAKE_MAX: 0.22,             // u. Camera offset at trauma 1. Reduce Motion disables shake entirely.
+  SPEED_TIER_STEP: 4,          // u/s between "speed tiers" (16, 20, 24 …): each gets an anticipation beat …
+  ANTICIPATION_LEAD: 0.5,      // … this many seconds before the tier: a FOV pull-back and a rising audio sweep.
+  FOV_PULLBACK: 4,             // deg the FOV narrows during the anticipation, released as the tier is crossed.
+  NEAR_MISS_DIST: 0.2,         // u. Clearing an obstacle by less than this = a near miss: soft whoosh + bonus.
+  NEAR_MISS_BONUS: 10,         // points per near miss.
+  PITCH_VARIATION: 0.02,       // ±fraction of random pitch on every sound layer so repeats never machine-gun.
 
   // ---- Audio ---------------------------------------------------------------
   VOLUME: 0.5,           // Default master volume (0..1).

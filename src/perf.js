@@ -14,12 +14,12 @@ export class Perf {
     this.counters = { obstacles: 0, particles: 0, pooled: 0, ticks: 0, scale: 1, tier: '', note: '' }; this.log = [];
     this.t0 = 0; this.cpu0 = 0; this.lastFrame = 0; this.recording = null;
     // GPU timer (EXT_disjoint_timer_query_webgl2): measures the GPU side of a frame when the browser exposes it; silently absent otherwise.
-    const gl = this.gl = renderer.getContext(); this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2'); this.queries = []; this.gpuLast = 0;
+    this.webgpu = !!renderer.isWebGPURenderer; const gl = this.gl = this.webgpu ? null : renderer.getContext(); this.ext = gl ? gl.getExtension('EXT_disjoint_timer_query_webgl2') : null; this.queries = []; this.gpuLast = 0;
     // Panels
     this.panel = document.createElement('div'); this.panel.id = 'perf'; this.panel.hidden = true; this.panel.innerHTML = '<div class="txt"></div><canvas width="240" height="48"></canvas>';
     this.info = document.createElement('pre'); this.info.id = 'perfinfo'; this.info.hidden = true;
     document.body.append(this.panel, this.info); this.txt = this.panel.querySelector('.txt'); this.gfx = this.panel.querySelector('canvas').getContext('2d');
-    this.lastTxt = ''; this.acc = 0; this.frames = 0; this.fps = 0;
+    this.lastTxt = ''; this.acc = 0; this.frames = 0; this.fps = 0; this._w = { frameP95: 0, frameP50: 0, cpuP95: 0, gpuP95: 0, n: 0 };
   }
   toggle() { this.panel.hidden = !this.panel.hidden; }
   // ---- Press-to-pixel latency probe (?latency=1): on a press, a white corner quad is drawn in the very next rendered frame and the
@@ -43,6 +43,7 @@ export class Perf {
   end() {
     const cpu = performance.now() - this.cpu0;
     if (this.qOpen) { this.gl.endQuery(this.ext.TIME_ELAPSED_EXT); this.qOpen = false; this.pollGpu(); }
+    if (this.webgpu) { this.renderer.resolveTimestampsAsync?.(); this.gpuLast = this.renderer.info.render.timestamp || 0; } // WebGPU timestamp queries (trackTimestamp), one frame behind
     const frame = this.lastFrame ? this.t0 - this.lastFrame : 16.7; this.lastFrame = this.t0;
     const i = this.head; this.frameMs[i] = frame; this.cpuMs[i] = cpu; this.gpuMs[i] = this.gpuLast; this.head = (i + 1) % N; this.count++;
     const r = this.recording; if (r && r.n < r.cap) { const k = r.n++; r.frame[k] = frame; r.cpu[k] = cpu; r.gpu[k] = this.gpuLast; r.calls[k] = this.renderer.info.render.calls; r.tris[k] = this.renderer.info.render.triangles; r.heap[k] = performance.memory ? performance.memory.usedJSHeapSize : 0; }
@@ -53,7 +54,7 @@ export class Perf {
     if (this.queries.length > 8) { gl.deleteQuery(this.queries.shift()); } // never let stalled queries pile up
   }
   // Rolling stats over the last N frames (for the adaptive controllers and the panel).
-  window() { const n = Math.min(N, this.count), f = n < N ? this.frameMs.subarray(0, n) : this.frameMs, c = n < N ? this.cpuMs.subarray(0, n) : this.cpuMs; return { frameP95: percentile(f, 95), frameP50: percentile(f, 50), cpuP95: percentile(c, 95), n }; }
+  window() { const n = Math.min(N, this.count), f = n < N ? this.frameMs.subarray(0, n) : this.frameMs, c = n < N ? this.cpuMs.subarray(0, n) : this.cpuMs, g = n < N ? this.gpuMs.subarray(0, n) : this.gpuMs; const W = this._w; W.frameP95 = percentile(f, 95); W.frameP50 = percentile(f, 50); W.cpuP95 = percentile(c, 95); W.gpuP95 = this.ext || this.webgpu ? percentile(g, 95) : 0; W.n = n; return W; }
   draw() {
     const w = this.window(), ms = w.frameP50, s = `${this.fps.toFixed(0)} FPS  ${ms.toFixed(1)} ms  p95 ${w.frameP95.toFixed(1)}  cpu ${w.cpuP95.toFixed(1)}${this.ext ? `  gpu ${this.gpuLast.toFixed(1)}` : ''}  ×${this.counters.scale.toFixed(2)}`;
     if (s !== this.lastTxt) { this.txt.textContent = s; this.lastTxt = s; }
@@ -63,7 +64,7 @@ export class Perf {
   }
   drawInfo() {
     const I = this.renderer.info, c = this.counters, gl = this.gl;
-    this.info.textContent = `draw calls  ${I.render.calls}\ntriangles   ${I.render.triangles}\npoints      ${I.render.points}\ngeometries  ${I.memory.geometries}\ntextures    ${I.memory.textures}\nprograms    ${I.programs?.length ?? 0}\nobstacles   ${c.obstacles}\nparticles   ${c.particles}\npooled      ${c.pooled}\nticks/frame ${c.ticks}\nrender scale ${c.scale.toFixed(2)}  tier ${c.tier}\nbuffer      ${gl.drawingBufferWidth}×${gl.drawingBufferHeight}\n${c.note}\n${this.log.slice(-6).join('\n')}`;
+    this.info.textContent = `draw calls  ${I.render.calls}\ntriangles   ${I.render.triangles}\npoints      ${I.render.points}\ngeometries  ${I.memory.geometries}\ntextures    ${I.memory.textures}\nprograms    ${I.programs?.length ?? 0}\nobstacles   ${c.obstacles}\nparticles   ${c.particles}\npooled      ${c.pooled}\nticks/frame ${c.ticks}\nrender scale ${c.scale.toFixed(2)}  tier ${c.tier}\nbuffer      ${gl ? gl.drawingBufferWidth + '×' + gl.drawingBufferHeight : 'webgpu'}\n${c.note}\n${this.log.slice(-6).join('\n')}`;
   }
   note(s) { this.log.push(`${(performance.now() / 1000).toFixed(1)}s ${s}`); if (this.log.length > 40) this.log.shift(); }
   // ---- Benchmark recording ------------------------------------------------------------------------------------------------

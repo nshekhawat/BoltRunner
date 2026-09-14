@@ -10,7 +10,8 @@ canvas#game { display:block; width:100%; height:100%; touch-action:none; }
 #hud { position:fixed; inset:0; pointer-events:none; font-weight:900; text-shadow:var(--shadow); padding:max(12px,env(safe-area-inset-top)) 16px; }
 #timer { position:absolute; left:16px; top:14px; font-size:clamp(20px,4vw,34px); font-variant-numeric:tabular-nums; }
 #score { position:absolute; right:16px; top:14px; text-align:right; font-size:clamp(26px,5vw,42px); font-variant-numeric:tabular-nums; }
-#score.flash #scorenum { animation:pop .5s; color:var(--accent); }
+#score.flash #scorenum { animation:pop .5s, chroma .5s; color:var(--accent); }
+@keyframes chroma { 0%,100% { text-shadow:none } 20% { text-shadow:-3px 0 rgba(255,0,80,.9), 3px 0 rgba(0,220,255,.9) } 45% { text-shadow:2px 0 rgba(255,0,80,.8), -2px 0 rgba(0,220,255,.8) } 70% { text-shadow:-1px 0 rgba(255,0,80,.6), 1px 0 rgba(0,220,255,.6) } }
 #combo { font-size:clamp(14px,2.5vw,22px); color:var(--accent); min-height:1.2em; }
 #shields { position:absolute; left:50%; top:14px; transform:translateX(-50%); font-size:clamp(24px,5vw,40px); letter-spacing:.1em; }
 #shields span { display:inline-block; transition:transform .2s, opacity .2s; filter:drop-shadow(0 2px 2px rgba(0,0,0,.5)); }
@@ -100,6 +101,8 @@ body.hc #hud, body.hc .card { text-shadow:0 0 4px #000, 0 2px 0 #000; }
 #photo { position:fixed; left:0; right:0; bottom:max(16px,env(safe-area-inset-bottom)); display:flex; gap:10px; justify-content:center; align-items:center; z-index:15; font-weight:800; text-shadow:var(--shadow); }
 #photo[hidden] { display:none; } #photo p { margin:0 8px; }
 body.photo #hud, body.photo .overlay { display:none; }
+
+#vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%); }
 
 /* Perf panels (F / F3) */
 #perf { position: fixed; left: 8px; top: 8px; z-index: 50; font: 12px/1.3 ui-monospace, Menlo, monospace; color: #dfe; background: rgba(0,0,0,.55); padding: 4px 6px; border-radius: 6px; pointer-events: none; }

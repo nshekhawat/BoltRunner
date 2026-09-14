@@ -8,9 +8,9 @@ const args = process.argv.slice(2), opt = (k, d) => args.find(a => a.startsWith(
 const tiers = opt('tiers', 'high,medium,low').split(','), secs = +opt('secs', 60), biomes = opt('biomes', ''), out = opt('out', 'perf/current.json');
 const report = { date: new Date().toISOString(), label: opt('label', ''), vsync: args.includes('--vsync'), commit: spawnSync('git', ['rev-parse', '--short', 'HEAD']).stdout.toString().trim(), secs, tiers: {} };
 for (const tier of tiers) {
-  const q = `bench=1&q=${tier}&secs=${secs}${biomes ? '&biomes=' + biomes : ''}`;
+  const q = `bench=1&q=${tier}&secs=${secs}${biomes ? '&biomes=' + biomes : ''}${args.includes('--webgpu') ? '&webgpu=1' : ''}`;
   process.stderr.write(`▶ ${tier} (${q})\n`);
-  const r = spawnSync('node', ['check.mjs', '1', q, '--gpu', ...(args.includes('--vsync') ? [] : ['--uncapped']), '--eval=bolt.bench.done'], { encoding: 'utf8', maxBuffer: 1 << 26, timeout: (secs * 5 + 90) * 1000 });
+  const r = spawnSync('node', ['check.mjs', '1', q, '--gpu', ...(args.includes('--vsync') ? [] : ['--uncapped']), ...(args.includes('--webgpu') ? ['--webgpu'] : []), '--eval=bolt.bench.done'], { encoding: 'utf8', maxBuffer: 1 << 26, timeout: (secs * 5 + 90) * 1000 });
   const line = r.stdout.split('\n').find(l => l.startsWith('[eval] '));
   if (!line) { console.error(r.stdout, r.stderr); process.exit(1); }
   report.tiers[tier] = JSON.parse(line.slice(7));

@@ -10,13 +10,16 @@
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/",
+    "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.webgpu.js",
+    "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.tsl.js"
   }
 }
 </script>
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="vignette"></div>
 <div id="loading"><div class="title">BOLT RUNNER</div><div class="bar"><div id="loadbar"></div></div><div id="loadtext">Warming up…</div></div>
 <div id="hud" hidden>
   <div id="timer">00:00.00</div>

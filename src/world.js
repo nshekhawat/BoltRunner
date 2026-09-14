@@ -30,8 +30,8 @@ void main(){
 }`;
 
 export class World {
-  constructor(scene, shared, camera) {
-    this.scene = scene; this.camera = camera; this.T = shared.textures; this.speed = 0; this.biome = null;
+  constructor(scene, shared, camera, flatSky = false) {
+    this.scene = scene; this.camera = camera; this.T = shared.textures; this.speed = 0; this.biome = null; this.flatSky = flatSky; // flatSky: no ShaderMaterial (WebGPU evaluation) → background = horizon colour
     scene.fog = new THREE.FogExp2(0xd8c9a8, 0.0075);
     this.sun = new THREE.DirectionalLight(0xfff0d0, 2.6); this.sun.position.set(12, 18, 10); this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048); this.sun.shadow.bias = -0.0005; this.sun.shadow.normalBias = 0.02;
@@ -46,7 +46,7 @@ export class World {
     scene.add(this.sentinel); scene.children.unshift(scene.children.pop());
     this.skyU = { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, sunColor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, stars: { value: 0 }, aurora: { value: 0 }, time: { value: 0 }, uDesat: HC.desat };
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 16), new THREE.ShaderMaterial({ uniforms: this.skyU, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false }));
-    scene.add(this.sky);
+    this.sky.renderOrder = 1; scene.add(this.sky); // after every other opaque: the depth test rejects covered sky pixels (no overdraw)
     // Clouds: one InstancedMesh (one draw call for all nine); x scrolls per instance in a typed array.
     const N_CLOUD = 9; this.cloudMat = injectHC(new THREE.MeshBasicMaterial({ map: this.T.cloud, transparent: true, depthWrite: false, opacity: 0.85, fog: true }));
     this.clouds = new THREE.InstancedMesh(new THREE.PlaneGeometry(34, 13), this.cloudMat, N_CLOUD); this.clouds.frustumCulled = false; this.cloudX = new Float32Array(N_CLOUD); this.cloudY = new Float32Array(N_CLOUD); this.cloudZ = new Float32Array(N_CLOUD); this.cloudS = new Float32Array(N_CLOUD);
@@ -81,7 +81,7 @@ export class World {
     const s = this.cur, u = this.skyU;
     u.top.value.copy(s.top); u.horizon.value.copy(s.horizon); u.sunColor.value.copy(s.sun); u.stars.value = s.stars; u.aurora.value = s.aurora;
     u.sunDir.value.set(0.55, Math.sin(s.elev), -Math.cos(s.elev) * 0.6).normalize();
-    this.scene.fog.color.copy(s.fog); this.scene.background = null;
+    this.scene.fog.color.copy(s.fog); if (this.flatSky) { this.sky.visible = false; (this.scene.background ??= new THREE.Color()).copy(s.horizon); } else this.scene.background = null;
     this.sun.color.copy(s.sun); this.sun.intensity = s.sunI; this.hemi.color.copy(s.hemiSky); this.hemi.groundColor.copy(s.hemiGround); this.hemi.intensity = s.hemiI;
     this.scene.environmentIntensity = s.env; this.eyeLight.intensity = s.eyeLight;
     for (const m of this.shafts) { m.material.opacity = 0.22 * s.shafts; m.visible = this.shaftsAllowed !== false && s.shafts > 0.02; } // invisible when off: five large additive quads of pure overdraw otherwise

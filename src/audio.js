@@ -34,7 +34,7 @@ export class AudioEngine {
 
   // ---- synth primitives --------------------------------------------------------
   tone({ type = 'square', f = 440, f2, t = 0, dur = 0.1, g = 0.2, a = 0.005, r = 0.05, out = this.sfx, lp }) {
-    const ctx = this.ctx, t0 = ctx.currentTime + t, o = ctx.createOscillator(), env = ctx.createGain();
+    const ctx = this.ctx, t0 = ctx.currentTime + t, o = ctx.createOscillator(), env = ctx.createGain(), pv = out === this.sfx ? 1 + (Math.random() * 2 - 1) * C.PITCH_VARIATION : 1; f *= pv; if (f2) f2 *= pv; // ±2 % pitch on SFX layers (never on music)
     o.type = type; o.frequency.setValueAtTime(f, t0); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
     env.gain.setValueAtTime(0, t0); env.gain.linearRampToValueAtTime(g, t0 + a); env.gain.setValueAtTime(g, t0 + Math.max(a, dur - r)); env.gain.linearRampToValueAtTime(0, t0 + dur);
     let node = o; if (lp) { const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = lp; o.connect(fl); node = fl; }
@@ -42,6 +42,7 @@ export class AudioEngine {
   }
   noise({ t = 0, dur = 0.1, g = 0.2, type = 'bandpass', f = 1000, f2, q = 1, a = 0.005, out = this.sfx }) {
     const ctx = this.ctx, t0 = ctx.currentTime + t, src = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), env = ctx.createGain();
+    const pv = out === this.sfx ? 1 + (Math.random() * 2 - 1) * C.PITCH_VARIATION * 3 : 1; f *= pv; if (f2) f2 *= pv;
     src.buffer = this.noiseBuf; src.loop = true; fl.type = type; fl.frequency.setValueAtTime(f, t0); fl.Q.value = q; if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
     env.gain.setValueAtTime(0, t0); env.gain.linearRampToValueAtTime(g, t0 + a); env.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
     src.connect(fl).connect(env).connect(out); src.start(t0, Math.random() * 0.5); src.stop(t0 + dur + 0.02);
@@ -51,10 +52,10 @@ export class AudioEngine {
   jump() { if (!this.ctx) return; this.tone({ type: 'square', f: 300, f2: 720, dur: 0.14, g: 0.12 }); this.noise({ type: 'bandpass', f: 900, f2: 2400, dur: 0.18, g: 0.12, q: 0.8 }); }
   land(foot = 'sand') { if (!this.ctx) return; const F = FOOT[foot] ?? FOOT.sand; this.noise({ type: F.type, f: F.f * 0.6, dur: 0.12, g: 0.35 }); this.tone({ type: 'sine', f: 120, f2: 60, dur: 0.08, g: 0.15 }); }
   shieldLost() { if (!this.ctx) return; this.tone({ type: 'sawtooth', f: 440, f2: 170, dur: 0.38, g: 0.16, lp: 1100, r: 0.2 }); this.noise({ type: 'lowpass', f: 700, dur: 0.2, g: 0.15 }); }
-  milestone() { if (!this.ctx) return; [N.C5, N.E5, N.G5].forEach((f, i) => this.tone({ type: 'triangle', f, t: i * 0.09, dur: 0.16, g: 0.16 })); }
+  milestone() { if (!this.ctx) return; this.noise({ type: 'highpass', f: 5000, dur: 0.04, g: 0.08 }); [N.C5, N.E5, N.G5].forEach((f, i) => this.tone({ type: 'triangle', f, t: i * 0.09, dur: 0.16, g: 0.16 })); }
   newBest() { if (!this.ctx) return; [N.C5, N.E5, N.G5, N.C6].forEach((f, i) => this.tone({ type: 'triangle', f, t: i * 0.11, dur: i === 3 ? 0.4 : 0.14, g: 0.16 })); }
   pickup() { if (!this.ctx) return; this.tone({ type: 'sine', f: 1320, dur: 0.35, g: 0.18, r: 0.3 }); this.tone({ type: 'sine', f: 2640, dur: 0.25, g: 0.06, r: 0.2 }); }
-  countdown(step) { if (!this.ctx) return; step === 3 ? this.tone({ type: 'square', f: 990, dur: 0.28, g: 0.14, r: 0.15 }) : this.tone({ type: 'square', f: 660, dur: 0.09, g: 0.1 }); }
+  countdown(step) { if (!this.ctx) return; this.noise({ type: 'bandpass', f: 3000, dur: 0.03, g: 0.08, q: 2 }); step === 3 ? this.tone({ type: 'square', f: 990, dur: 0.28, g: 0.14, r: 0.15 }) : this.tone({ type: 'square', f: 660, dur: 0.09, g: 0.1 }); }
   step(speed, foot = 'sand') { if (!this.ctx) return; const k = speed / C.SPEED_START, F = FOOT[foot] ?? FOOT.sand; this.noise({ type: F.type, f: F.f * k, dur: F.dur, g: F.g, q: F.q ?? 1 }); this.tone({ type: 'sine', f: 150 * k, f2: 80 * k, dur: 0.04, g: 0.07 }); }
   // Impact timbre per obstacle (biome data names one of these): what you hit sounds like what it is made of.
   impact(kind) {
@@ -64,16 +65,20 @@ export class AudioEngine {
       case 'wood': case 'thud': this.tone({ type: 'triangle', f: 180, f2: 90, dur: 0.16, g: 0.2 }); this.noise({ type: 'lowpass', f: 600, dur: 0.1, g: 0.2 }); break;
       case 'stone': this.noise({ type: 'lowpass', f: 900, f2: 200, dur: 0.18, g: 0.25 }); this.tone({ type: 'square', f: 90, f2: 50, dur: 0.1, g: 0.1, lp: 300 }); break;
       case 'ice': case 'crack': this.noise({ type: 'highpass', f: 2600, dur: 0.09, g: 0.18 }); [1900, 2900, 4100].forEach((f, i) => this.tone({ type: 'sine', f, t: i * 0.02, dur: 0.12, g: 0.06 })); break;
-      case 'flap': this.noise({ type: 'bandpass', f: 500, f2: 1200, dur: 0.2, g: 0.16, q: 0.8 }); break;
-      case 'rustle': this.noise({ type: 'bandpass', f: 3000, f2: 1500, dur: 0.25, g: 0.14, q: 0.5 }); break;
-      case 'steam': case 'splash': this.noise({ type: 'lowpass', f: 1200, f2: 300, dur: 0.3, g: 0.18 }); break;
-      case 'plastic': this.tone({ type: 'square', f: 260, f2: 140, dur: 0.1, g: 0.12, lp: 900 }); break;
-      default: this.noise({ type: 'lowpass', f: 700, dur: 0.15, g: 0.2 });
+      case 'flap': this.noise({ type: 'bandpass', f: 500, f2: 1200, dur: 0.2, g: 0.16, q: 0.8 }); this.tone({ type: 'sine', f: 220, f2: 120, dur: 0.12, g: 0.08 }); break;
+      case 'rustle': this.noise({ type: 'bandpass', f: 3000, f2: 1500, dur: 0.25, g: 0.14, q: 0.5 }); this.tone({ type: 'triangle', f: 160, f2: 90, dur: 0.1, g: 0.08 }); break;
+      case 'steam': case 'splash': this.noise({ type: 'lowpass', f: 1200, f2: 300, dur: 0.3, g: 0.18 }); this.noise({ type: 'highpass', f: 4000, dur: 0.05, g: 0.1 }); break;
+      case 'plastic': this.tone({ type: 'square', f: 260, f2: 140, dur: 0.1, g: 0.12, lp: 900 }); this.noise({ type: 'highpass', f: 2500, dur: 0.04, g: 0.1 }); break;
+      default: this.noise({ type: 'lowpass', f: 700, dur: 0.15, g: 0.2 }); this.tone({ type: 'sine', f: 140, f2: 70, dur: 0.1, g: 0.1 });
     }
   }
-  hiss() { if (!this.ctx) return; this.noise({ type: 'highpass', f: 3500, dur: C.HAZARD_TELEGRAPH, g: 0.1, a: 0.25 }); }
-  erupt() { if (!this.ctx) return; this.noise({ type: 'lowpass', f: 900, f2: 250, dur: 0.5, g: 0.22 }); }
-  uiClick() { if (!this.ctx) return; this.tone({ type: 'square', f: 880, dur: 0.05, g: 0.06 }); }
+  hiss() { if (!this.ctx) return; this.noise({ type: 'highpass', f: 3500, dur: C.HAZARD_TELEGRAPH, g: 0.1, a: 0.25 }); this.tone({ type: 'sine', f: 60, f2: 90, dur: C.HAZARD_TELEGRAPH, g: 0.08, a: 0.3 }); }
+  erupt() { if (!this.ctx) return; this.noise({ type: 'lowpass', f: 900, f2: 250, dur: 0.5, g: 0.22 }); this.tone({ type: 'sine', f: 90, f2: 40, dur: 0.3, g: 0.14 }); }
+  uiClick() { if (!this.ctx) return; this.tone({ type: 'square', f: 880, dur: 0.05, g: 0.06 }); this.noise({ type: 'highpass', f: 6000, dur: 0.02, g: 0.04 }); }
+  // Near miss: a soft whoosh (band-passed air) with a faint falling sine underneath.
+  whoosh() { if (!this.ctx) return; this.noise({ type: 'bandpass', f: 600, f2: 2400, dur: 0.22, g: 0.14, q: 1.2, a: 0.04 }); this.tone({ type: 'sine', f: 520, f2: 260, dur: 0.18, g: 0.05, a: 0.03 }); }
+  // Anticipation before a speed tier: a rising sweep that lands as the tier is crossed.
+  sweep(secs) { if (!this.ctx) return; this.tone({ type: 'sine', f: 300, f2: 900, dur: secs, g: 0.07, a: 0.1, r: 0.1 }); this.noise({ type: 'bandpass', f: 800, f2: 3200, dur: secs, g: 0.05, q: 2, a: 0.15 }); }
 
   // ---- Music --------------------------------------------------------------------
   startMusic() { if (!this.ctx || this.playing) return; this.playing = true; this.stepIdx = 0; this.nextStepTime = this.ctx.currentTime + 0.05; this.timer = setInterval(() => this.schedule(), 25); }

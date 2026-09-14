@@ -54,8 +54,10 @@ export class Robot {
     const idx = []; for (let i = 0; i < TRAIL_N - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } geo.setIndex(idx);
     this.trail = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     this.trail.frustumCulled = false; this.trailPts = Array.from({ length: TRAIL_N }, () => ({ x: 0, y: 0.06 })); this.trailColor = new THREE.Color(0x40e8ff); this.trailBright = 1;
+    // Blob shadow: one flat disc that shrinks and fades with height. Cheap on every tier (the robot casts no shadow-map shadow) and it tells the player where they will land.
+    this.blob = new THREE.Mesh(new THREE.CircleGeometry(0.42, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false })); this.blob.rotation.x = -Math.PI / 2; this.blob.position.set(0, 0.015, 0); this.blob.renderOrder = -1;
     this.setStyle('bolt');
-    this._boxes = [{}, {}, {}]; this.time = 0; this.phase = 0; this.blink = 2; this.blinkT = 0; this.glance = 0; this.squash = 0; this.stumble = 0; this.wasGrounded = true; this.prevSin = 0;
+    this._boxes = [{}, {}, {}]; this.time = 0; this.phase = 0; this.blink = 2; this.blinkT = 0; this.glance = 0; this.sqKind = 1; this.sqT = 9; this.stumble = 0; this.wasGrounded = true; this.prevSin = 0;
     this._tmp = new THREE.Vector3();
   }
 
@@ -89,9 +91,9 @@ export class Robot {
     this.time += dt; let step = false;
     const norm = Math.min(1, (s.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START));
     const rig = this.rig, torso = this.torso, head = this.head;
-    this.group.position.y = s.y;
-    if (s.grounded && !this.wasGrounded) this.squash = 0.12; this.wasGrounded = s.grounded;
-    this.squash = Math.max(0, this.squash - dt); this.stumble = Math.max(0, this.stumble - dt);
+    this.group.position.y = s.y; const bl = this.blob, hf = Math.max(0, 1 - s.y / 5); bl.scale.set(0.7 + 0.3 * hf, 0.7 + 0.3 * hf, 1); bl.material.opacity = 0.32 * hf; bl.visible = s.mode !== 'idle' || true;
+    if (s.grounded && !this.wasGrounded) { this.sqKind = 1; this.sqT = 0; } else if (!s.grounded && this.wasGrounded) { this.sqKind = 0; this.sqT = 0; } this.wasGrounded = s.grounded; // 0 = launch stretch, 1 = landing squash
+    this.sqT += dt; this.stumble = Math.max(0, this.stumble - dt);
     if (s.hitFlash > 0 && this.stumble === 0 && s.mode !== 'stumble' && !this._stumbled) { this.stumble = 0.35; }
     this._stumbled = s.hitFlash > 0;
     let sy = 1, sx = 1, lean = 0, bob = 0;
@@ -121,7 +123,10 @@ export class Robot {
       this.glance = (Math.sin(this.time * 0.5) > 0.7) ? THREE.MathUtils.lerp(this.glance, 0.7, dt * 4) : THREE.MathUtils.lerp(this.glance, 0, dt * 4);
     }
     if (this.stumble > 0) { lean += Math.sin(this.stumble * 40) * 0.25; bob -= 0.05; }
-    if (this.squash > 0) { const q = this.squash / 0.12; sy *= 1 - 0.22 * q; sx *= 1 + 0.15 * q; }
+    { // Squash & stretch (config: SQUASH_*): ramp to the target over the attack, ease back over the release.
+      const A = (this.sqKind ? C.SQUASH_LAND_MS : C.SQUASH_LAUNCH_MS) / 1000, R = C.SQUASH_RELEASE_MS / 1000, T = this.sqKind ? C.SQUASH_LAND : C.SQUASH_LAUNCH, t = this.sqT;
+      const k = t < A ? t / A : t < A + R ? 1 - THREE.MathUtils.smoothstep((t - A) / R, 0, 1) : 0;
+      if (k > 0) { sy *= 1 + (T[0] - 1) * k; sx *= 1 + (T[1] - 1) * k; } }
     const [sw, st] = this.styleScale ?? [1, 1]; rig.scale.set(sx * sw, sy * st, sx * sw); rig.rotation.x = lean; torso.position.y = 0.72 + bob;
     head.rotation.y = s.mode === 'idle' ? -this.glance : THREE.MathUtils.lerp(head.rotation.y, 0, dt * 6); // glance toward the camera
     head.rotation.x = s.mode === 'run' ? -0.05 : 0;

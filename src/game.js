@@ -12,7 +12,7 @@ const NO_BOXES = []; // shared empty list while invulnerable (no per-frame alloc
 export class Game {
   constructor(scene, shared) {
     this.scene = scene; this.player = new Player(); this.biome = null;
-    this.robot = new Robot(shared); scene.add(this.robot.group, this.robot.trail);
+    this.robot = new Robot(shared); scene.add(this.robot.group, this.robot.trail, this.robot.blob);
     this.ghost = Robot.ghost(shared); this.ghost.group.visible = false; scene.add(this.ghost.group); this.ghostOn = true; this.ghostData = null; this.rec = [];
     this.obstacles = new Obstacles(scene, shared);
     // DEBUG_HITBOXES: wireframes for the robot's three body boxes (obstacle boxes live in obstacles.js).
@@ -36,7 +36,7 @@ export class Game {
   resetRun() {
     this.player.reset(); this.obstacles.reset(); this.obstacles.setDifficulty(this.mode);
     this.speed = 0; this.distance = 0; this.score = 0; this.time = 0; this.shields = C.SHIELDS_MAX;
-    this.combo = 0; this.maxCombo = 0; this.cleared = 0; this.penalty = 0; this.bonus = 0; this.invuln = 0; this.power = null; this.bubble = false; this.rocket = false; this.powersGot = 0; this.clearedBy = {}; this.sawNight = false; this.rec = []; this.recT = 0; hud.power(null); this.nextMilestone = C.MILESTONE; this.hitFlash = 0; this.beatBest = false;
+    this.combo = 0; this.maxCombo = 0; this.cleared = 0; this.penalty = 0; this.bonus = 0; this.invuln = 0; this.power = null; this.bubble = false; this.rocket = false; this.powersGot = 0; this.clearedBy = {}; this.sawNight = false; this.rec = []; this.recT = 0; hud.power(null); this.nextMilestone = C.MILESTONE; this.hitFlash = 0; this.beatBest = false; this.nextTier = Math.ceil((this.startSpeed + 0.01) / C.SPEED_TIER_STEP) * C.SPEED_TIER_STEP;
     hud.score(0); hud.timer(0); hud.shields(this.shields, C.SHIELDS_MAX); hud.combo(0);
   }
   setState(s) { this.prevState = this.state; this.state = s; this.stateTime = 0; hud.menu(s === 'MENU', store.best, store.bestTime); hud.pause(s === 'PAUSED'); if (s !== 'CRASHED') hud.end(false); this.emit('state', s); }
@@ -107,6 +107,7 @@ export class Game {
     if (this.state === 'PLAYING') {
       if (this.sessionLimit > 0) { this.sessionT += dt; if (this.sessionT >= this.sessionLimit) { this.sessionT = 0; this.pause(); this.onBreak = true; this.emit('break'); return; } }
       this.speed = Math.min(this.speedCap, this.speed + C.SPEED_ACCEL * dt);
+      if (this.speed + C.SPEED_ACCEL * C.ANTICIPATION_LEAD >= this.nextTier && this.nextTier <= this.speedCap) { this.emit('speedTier', this.nextTier); this.nextTier += C.SPEED_TIER_STEP; } // anticipation beat ANTICIPATION_LEAD s before each tier
       this.distance += this.speed * dt; this.time += dt;
       if (this.rocket) this.bonus += this.speed * dt * C.POINTS_PER_UNIT; // Rocket Boost: double score while flying
       this.score = Math.max(0, Math.floor((this.distance + this.bonus) * C.POINTS_PER_UNIT) - this.penalty);
@@ -121,6 +122,7 @@ export class Game {
       this.obstacles.update(dt, this.speed, this.score, this.shields, this.ev, this.invuln > 0 || this.rocket ? NO_BOXES : boxes);
       const ev = this.ev;
       if (ev.passed) { this.combo += ev.passed; this.cleared += ev.passed; this.maxCombo = Math.max(this.maxCombo, this.combo); hud.combo(this.combo); for (const t of ev.passedTypes) this.clearedBy[t] = (this.clearedBy[t] ?? 0) + 1; }
+      if (ev.nearMiss) { this.bonus += ev.nearMiss * C.NEAR_MISS_BONUS; this.emit('nearMiss'); }
       if (ev.power) this.activatePower(ev.power);
       if (ev.hiss) this.emit('hiss'); if (ev.erupt) this.emit('erupt');
       if (ev.beam) { this.needBg = true; this.emit('beam'); if (!this.tutorialDone) { this.tutorialDone = true; this.slowT = 1.0; this.timeScale = 0.6; hud.message('💙 HEALTH', 1.4, true); this.emit('tutorial'); } } // first-seen beat, once per session
@@ -128,7 +130,7 @@ export class Game {
       if (ev.hit && this.bubble) { this.bubble = false; this.endPower(); this.invuln = C.INVULN_TIME; this.emit('bubblePop'); ev.hit = null; } // Shield Bubble absorbs one hit
       if (ev.hit) {
         if (this.mode === 'nofail') this.penalty += C.NOFAIL_HIT_COST; else this.shields--; // practice mode: hits only cost score
-        this.combo = 0; this.invuln = C.INVULN_TIME; this.hitFlash = C.INVULN_TIME;
+        this.combo = 0; this.invuln = C.INVULN_TIME; this.hitFlash = C.INVULN_TIME; this.obstacles.spawner.hit(); // fairness: the next chunk is easy
         hud.shields(this.shields, C.SHIELDS_MAX); hud.combo(0); this.emit('hit', ev.hit);
         if (this.shields <= 0) { const st = this.stats(); this.setState('CRASHED'); hud.end(true, st); this.emit('crashed', st); }
       }

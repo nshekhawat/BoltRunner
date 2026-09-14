@@ -5,7 +5,7 @@ import { PALETTES, PALETTE_IDS } from './palettes.js';
 
 export const DEFAULTS = {
   difficulty: 'kid', startSpeed: 12,
-  quality: 'auto', highContrast: false, palette: 'normal', showFps: false, cameraDistance: 1,
+  quality: 'auto', dynamicRes: true, reduceMotion: false, highContrast: false, palette: 'normal', showFps: false, cameraDistance: 1,
   music: 0.7, sfx: 0.9, mute: false,
   jumpKey: 'Space', holdSensitivity: 'normal',
   sessionMinutes: 0, ghost: true, paint: 'silver', topper: 'ball', trail: 'biome', character: 'bolt',
@@ -16,6 +16,8 @@ const SCHEMA = [
   { key: 'startSpeed', label: 'Starting speed', type: 'choice', options: [[8, 'Gentle'], [12, 'Normal'], [16, 'Zippy']] },
   { section: 'Visual' },
   { key: 'quality', label: 'Quality', type: 'choice', options: [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']] },
+  { key: 'reduceMotion', label: 'Reduce motion', type: 'toggle', hint: 'No screen shake or camera pulses' },
+  { key: 'dynamicRes', label: 'Dynamic resolution', type: 'toggle', hint: 'Lowers the render resolution for a moment when frames drop' },
   { key: 'highContrast', label: 'High-Contrast Mode', type: 'toggle', hint: 'Fades the scenery, boosts obstacles and the health pickup' },
   { key: 'palette', label: 'Colour palette', type: 'choice', options: PALETTE_IDS.map(id => [id, PALETTES[id].label]) },
   { key: 'showFps', label: 'Show FPS', type: 'toggle' },

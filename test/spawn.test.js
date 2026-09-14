@@ -84,3 +84,33 @@ for (const id of Object.keys(BIOMES)) {
     });
   }
 }
+
+// ---- Chunk generator ---------------------------------------------------------------------------------------------------------
+import { CHUNKS, CHUNK_RULES, SKILLS } from '../src/chunks.js';
+import { checkChunks } from '../src/spawn.js';
+test('every authored chunk is clearable at every speed cap, has a difficulty 1–10 and a known skill', () => {
+  assert.deepEqual(checkChunks(), []); assert.ok(CHUNKS.length >= 30, `${CHUNKS.length} chunks`);
+  for (const c of CHUNKS) assert.ok(SKILLS.includes(c.skill), c.id);
+  assert.equal(new Set(CHUNKS.map(c => c.id)).size, CHUNKS.length, 'chunk ids are unique');
+});
+test('the bag never repeats a chunk within two, never runs a skill three times, and goes easy after a hit', () => {
+  const sp = new Spawner(lcg(7)); const ids = [], skills = []; let easyChecks = 0;
+  for (let k = 0; k < 3000; k++) { const c = sp.pickChunk(1500); ids.push(c.id); skills.push(c.skill); if (k % 50 === 0) { sp.hit(); const e = sp.pickChunk(1500); assert.ok(e.diff <= CHUNK_RULES.easyAfterHit, `after a hit got ${e.id} (diff ${e.diff})`); easyChecks++; ids.push(e.id); skills.push(e.skill); } }
+  for (let i = 2; i < ids.length; i++) { assert.notEqual(ids[i], ids[i - 1]); assert.notEqual(ids[i], ids[i - 2]); }
+  let run = 1; for (let i = 1; i < skills.length; i++) { run = skills[i] === skills[i - 1] ? run + 1 : 1; assert.ok(run <= CHUNK_RULES.skillRunCap, `skill ${skills[i]} ran ${run} times at ${i}`); }
+  assert.ok(easyChecks > 50);
+});
+test('difficulty band widens with score and never exceeds the unlocked archetypes', () => {
+  const sp = new Spawner(lcg(3));
+  for (let k = 0; k < 500; k++) { const c = sp.pickChunk(0); assert.ok(c.diff <= 1, c.id); for (const [t] of c.items) assert.ok(DEFS[t].intro === 0); }
+  for (let k = 0; k < 500; k++) { const c = sp.pickChunk(400); assert.ok(c.diff <= 4); for (const [t] of c.items) assert.ok(DEFS[t].intro <= 400, `${c.id} uses ${t} at 400`); }
+  const seen = new Set(); for (let k = 0; k < 3000; k++) seen.add(sp.pickChunk(2000).id); assert.equal(seen.size, CHUNKS.length, 'at full band every chunk is drawn');
+});
+test('coverage: 10,000 sequences per difficulty reach every chunk of the band and include rest beats', () => {
+  for (const mode of Object.keys(C.SPEED_CAP)) {
+    const rng = lcg(mode.length * 31), cap = C.SPEED_CAP[mode], sp = new Spawner(rng); let rests = 0;
+    for (let k = 0; k < 10000; k++) { const speed = C.SPEED_START + rng() * (cap - C.SPEED_START); const before = sp.stats.rest ?? 0; simulateWith(sp, rng, speed, 1500, 4); rests += (sp.stats.rest ?? 0) - before; }
+    const ids = Object.keys(sp.stats).filter(k => k !== 'rest'); assert.equal(ids.length, CHUNKS.length, `${mode}: ${ids.length}/${CHUNKS.length} chunks reached`); assert.ok(rests > 100, `${mode}: ${rests} rest beats`);
+  }
+});
+function simulateWith(sp, rng, speed, score, n) { const live = []; let arrived = 0, t = 0; const dt = 1 / 30; while (arrived < n && t < 60) { const type = sp.tick(dt, speed, score, false); if (type) live.push({ type, x: C.SPAWN_X, mult: DEFS[type].speedMult ?? 1 }); for (let i = live.length - 1; i >= 0; i--) { live[i].x -= speed * live[i].mult * dt; if (live[i].x <= C.ROBOT_X) { arrived++; live.splice(i, 1); } } t += dt; } }

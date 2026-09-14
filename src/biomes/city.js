@@ -69,7 +69,7 @@ export default {
       update: (g, dt, t) => { const p = g.getObjectByName('puff'); p.scale.y = 0.6 + 0.4 * Math.sin(t * 2 + g.position.x * 0.1); p.rotation.y += dt; } }, // steam grate
   ],
   particles: {
-    ambient: [{ count: 260, color: 0xa8c0ff, size: 0.45, opacity: 0.28, texture: 'streak', vel: [-2, -16, 0], scroll: 0.5, area: { x: [-12, 44], y: [0, 16], z: [-14, -1.5] } }], // rain streaks, behind the lane
+    ambient: [{ count: 260, color: 0xa8c0ff, size: 0.45, opacity: 0.28, texture: 'streak', additive: true, vel: [-2, -16, 0], scroll: 0.5, area: { x: [-12, 44], y: [0, 16], z: [-14, -1.5] } }], // rain streaks, behind the lane; additive = no sorting, no depth writes, cheaper overdraw
     impact: { colors: [0x40f0ff, 0xff3fb0, 0xffffff], n: 40, speed: 9, gravity: -30, life: 0.7 },
     trail: { colors: [0x8fb0ff, 0xc0d8ff] },
   },
@@ -91,6 +91,7 @@ export default {
     for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) g.add(P.box(0.12, 0.12, 0.12, M.droneDark, x * e, y * e, z * e));
     const trace = P.plane(0.5, 0.08, M.trace, 0, -0.3, e + 0.01); trace.name = 'flicker'; trace.userData.noOutline = true; g.add(trace);
     const pool = P.plane(1.6, 1.6, M.puddleLight, 0, -1.15, 0); pool.rotation.x = -Math.PI / 2; pool.userData.noOutline = true; g.add(pool); return g; } },
+  chunkWeights: { rhythm: 1.4, timing: 1, jump: 0.8 }, // neon and drones: rhythm
   audio: { musicPreset: 'city', impactTimbre: 'metal', footstepTimbre: 'wet' },
   robotAccent: { emissive: 0xff40c0, trailColor: 0xff60d0 },
 };

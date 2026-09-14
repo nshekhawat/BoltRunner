@@ -89,6 +89,7 @@ export default {
     for (let i = 0; i < 4; i++) { const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), M.crystal); c.scale.set(0.5, 1.6, 0.5); c.position.set(Math.cos(i * 1.57) * 0.76, 0, Math.sin(i * 1.57) * 0.76); c.rotation.z = Math.cos(i * 1.57) * 0.4; c.rotation.x = -Math.sin(i * 1.57) * 0.4; c.userData.noOutline = true; g.add(c); }
     for (const tilt of [0.3, -0.3]) { const vine = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.03, 6, 32), M.vine); vine.lookAt(ctx.viewDir); vine.rotateX(tilt); vine.userData.noOutline = true; g.add(vine); } // glowing vine loops, facing the camera
     for (let i = 0; i < 3; i++) { const f = P.sphere(0.045, M.firefly, Math.cos(i * 2.1) * 0.85, Math.sin(i * 1.3) * 0.4, Math.sin(i * 2.1) * 0.85, 6); f.userData.noOutline = true; g.add(f); } return g; } },
+  chunkWeights: { timing: 1.4, rhythm: 1, jump: 0.8 }, // boulders and geysers: timing
   audio: { musicPreset: 'jungle', impactTimbre: 'wood', footstepTimbre: 'soft' },
   robotAccent: { emissive: 0x7dff7a, trailColor: 0x9dff8a },
 };

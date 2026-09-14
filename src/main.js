@@ -6,9 +6,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
+import { QualityController, TIERS } from './quality.js';
 import { CONFIG as C } from './config.js';
 import { makeSharedMaterials } from './textures.js';
 import { BIOMES, BIOME_IDS, buildBiome, buildBiomeSync, disposeBiome, disposeBiomeChunked, NOISE_LISTS } from './biomes/index.js';
@@ -34,7 +33,13 @@ const loadBar = document.getElementById('loadbar'), loadText = document.getEleme
 const progress = (pct, text) => { loadBar.style.width = pct + '%'; loadText.textContent = text; return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); };
 
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); // antialias covers the Low tier (direct render)
+const params = new URLSearchParams(location.search);
+// ?webgpu=1: evaluation only (see perf/webgpu-report.md). The WebGPU build shares three.core.js with the classic build, so every class
+// the game uses is the same object; only the renderer differs. Things that are WebGL-only here are skipped in that mode: the composer
+// (bloom), the ShaderMaterial sky (a flat sky colour instead), the pixel readback for the pickup plate and the GL timer query.
+const WEBGPU = !!params.get('webgpu'); let renderer, GPU = null;
+if (WEBGPU) { GPU = await import('three/webgpu'); renderer = new GPU.WebGPURenderer({ canvas, antialias: true, trackTimestamp: true }); await renderer.init(); console.log('webgpu backend', renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2 fallback'); }
+else renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); // antialias covers the Low tier (direct render)
 renderer.setPixelRatio(Math.min(devicePixelRatio, C.MAX_PIXEL_RATIO));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
@@ -44,19 +49,18 @@ const camera = new THREE.PerspectiveCamera(C.FOV_BASE, 1, 0.1, 400);
 
 await progress(10, 'Polishing the robot…');
 const shared = makeSharedMaterials();
-const world = new World(scene, shared, camera);
+const world = new World(scene, shared, camera, WEBGPU);
 const game = new Game(scene, shared);
-const params = new URLSearchParams(location.search);
 await progress(35, 'Painting the world…');
 let biome = null, bgOnce = false;
-const TIERS = ['high', 'medium', 'low']; let camDist = 1, quality = 'high', autoQuality = true;
+let camDist = 1, quality = 'high', autoQuality = true, basePixelRatio = 1;
 // Swap the whole environment. Everything the old biome owned is disposed; renderer.info.memory must return to the same numbers.
 function applyBiome(next, prebuilt = null, deferDispose = false) {
   const old = biome; world.setBiome(next, !old); const oldGeos = game.setBiome(next, prebuilt); biome = next; bgOnce = true;
   if (!prebuilt) warmUp(); // sync path (startup, select screen, debug): compile + first-draw every program now, not on the first obstacle of the run
   if (old) { const gen = disposeBiomeChunked(old, oldGeos); if (deferDispose) { const step = () => { if (!gen.next().done) idle(step); }; idle(step); } else for (const _ of gen); }
   renderer.toneMappingExposure = next.def.lighting.exposure; // per-biome exposure; bloom threshold set below (High-Contrast overrides it)
-  hud.biome(next.def); audio.setBiome(next.def.audio); if (!HC.desat.value) bloom.threshold = next.def.lighting.bloomThreshold; return next;
+  hud.biome(next.def); audio.setBiome(next.def.audio); if (!HC.desat.value) bloom.threshold = next.def.lighting.bloomThreshold; emissiveBoost(quality !== 'high'); for (let i = 0; i < next.layers.length; i++) next.layers[i].a.visible = quality !== 'low' || i < 2; return next;
 }
 const switchBiome = id => { const inst = applyBiome(buildBiomeSync(BIOMES[id], shared)); rememberNoise(id); return inst; }; // synchronous (startup, debug)
 // Chunked build on idle time: one generator step per idle callback so the frame never stalls. Resolves with the built instance.
@@ -78,19 +82,20 @@ function warmUp(extra = null) {
   const tmp = extra ? new THREE.Group() : null; if (tmp) { for (const g of extra) { warmList.push(g); tmp.add(g); } scene.add(tmp); }
   const vis = warmList.map(g => g.visible); for (const g of warmList) { g.visible = true; g.traverse(o => { o.userData.fc = o.frustumCulled; o.frustumCulled = false; }); }
   const t0 = performance.now();
-  if (quality === 'low') { renderer.setScissorTest(true); renderer.setScissor(0, 0, 4, 4); renderer.render(scene, camera); renderer.setScissorTest(false); } // screen programs differ from render-target ones
+  if (!usesComposer()) { renderer.setScissorTest(true); renderer.setScissor(0, 0, 4, 4); renderer.render(scene, camera); renderer.setScissorTest(false); } // screen programs differ from render-target ones
   else { renderer.setRenderTarget(warmTarget); renderer.render(scene, camera); renderer.setRenderTarget(null); }
   warmList.forEach((g, i) => { g.visible = vis[i]; g.traverse(o => { o.frustumCulled = o.userData.fc ?? true; }); });
   if (tmp) { for (const g of extra) tmp.remove(g); scene.remove(tmp); }
-  perf.note(`warm-up ${(performance.now() - t0).toFixed(1)} ms, ${renderer.info.programs.length} programs`);
+  perf.note(`warm-up ${(performance.now() - t0).toFixed(1)} ms, ${renderer.info.programs?.length ?? '-'} programs`);
 }
 const audio = new AudioEngine();
 await progress(70, 'Bouncing light around…');
-const pmrem = new THREE.PMREMGenerator(renderer);
+const pmrem = new (WEBGPU ? GPU.PMREMGenerator : THREE.PMREMGenerator)(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; pmrem.dispose();
 await progress(85, 'Checking your graphics…');
 // Quality tier: URL override > saved choice > GPU heuristic refined by a 1-second FPS probe.
 function guessTier() {
+  if (WEBGPU) return 'medium';
   const gl = renderer.getContext(), dbg = gl.getExtension('WEBGL_debug_renderer_info');
   const gpu = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
   if (/swiftshader|llvmpipe|software/i.test(gpu)) return 'low';
@@ -98,8 +103,8 @@ function guessTier() {
   return 'high';
 }
 async function probeFps(tier) {
-  setQuality(tier); let frames = 0; const t0 = performance.now();
-  while (performance.now() - t0 < 1000) { await new Promise(r => requestAnimationFrame(r)); composer.render(); frames++; }
+  setQuality(tier, false); let frames = 0; const t0 = performance.now();
+  while (performance.now() - t0 < 1000) { await new Promise(r => requestAnimationFrame(r)); if (usesComposer()) composer.render(); else renderer.render(scene, camera); frames++; }
   return frames * 1000 / (performance.now() - t0);
 }
 
@@ -108,23 +113,30 @@ async function probeFps(tier) {
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType }));
 const renderPass = new RenderPass(scene, camera);
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.4, 0.45, 1.15); // threshold above any lit albedo: only emissives bloom
-const vignette = new ShaderPass(VignetteShader); vignette.uniforms.offset.value = 0.6; vignette.uniforms.darkness.value = 1.0; // darkness 1 = mix toward black at the corners only; lower values grey out the whole frame
 const output = new OutputPass();
-composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(output); composer.addPass(vignette);
+composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(output); // vignette: a CSS radial gradient over the canvas (#vignette), composited by the browser — no full-screen pass
+const usesComposer = () => quality === 'high' && !WEBGPU; // only bloom needs the render-target chain; Medium and Low draw straight to the canvas with browser MSAA
 switchBiome(params.get('biome') in BIOMES ? params.get('biome') : 'desert');
-export function setQuality(q, persist = false) {
+// Emissives read without bloom: when the bloom pass is off, every emissive material glows a little harder so neon still pops.
+// Scenery only: the pickup's brightness is part of its measured contrast guarantee, so obstacle-kind materials are left alone.
+function emissiveBoost(on) { scene.traverse(o => { const m = o.material; if (!m || !m.emissive || !(m.emissiveIntensity > 0.5) || m.userData.hc === 'obstacle') return; if (m.userData.ei === undefined) m.userData.ei = m.emissiveIntensity; m.emissiveIntensity = m.userData.ei * (on ? 1.35 : 1); }); }
+function applyTier(q) {
   quality = q; hud.quality(q, autoQuality);
-  bloom.enabled = q === 'high'; renderer.shadowMap.enabled = q !== 'low';
-  world.sun.castShadow = q !== 'low'; world.sun.shadow.mapSize.setScalar(q === 'high' ? 1024 : 512); if (world.sun.shadow.map) { world.sun.shadow.map.dispose(); world.sun.shadow.map = null; }
+  bloom.enabled = q === 'high'; renderer.shadowMap.enabled = q !== 'low'; emissiveBoost(q !== 'high');
+  world.sun.castShadow = q !== 'low'; world.sun.shadow.mapSize.setScalar(q === 'high' ? 1024 : 512); if (!WEBGPU && world.sun.shadow.map) { world.sun.shadow.map.dispose(); world.sun.shadow.map = null; }
   scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
   fx.budget = q === 'low' ? 0.4 : 1; world.shaftsAllowed = q !== 'low'; if (world.cur) world.applyState();
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'low' ? 1 : matchMedia('(pointer: coarse)').matches ? C.MOBILE_PIXEL_RATIO : C.MAX_PIXEL_RATIO)); resize();
+  for (let i = 0; i < (world.biome?.layers.length ?? 0); i++) world.biome.layers[i].a.visible = q !== 'low' || i < 2; // Low: the farthest parallax layer is skipped
+  basePixelRatio = Math.min(devicePixelRatio, q === 'low' ? 1 : matchMedia('(pointer: coarse)').matches ? C.MOBILE_PIXEL_RATIO : C.MAX_PIXEL_RATIO); applyScale(qc.scale);
   if (biome) warmUp(); // programs differ per tier (shadows, screen vs render target): re-warm so the first frames of a run compile nothing
 }
+function applyScale(s) { renderer.setPixelRatio(basePixelRatio * s); perf.counters.scale = s; resize(); }
+const qc = new QualityController({ perf, applyTier, applyScale, log: s => { perf.note(s); console.log('quality', s); } });
+export function setQuality(q, manual = !autoQuality) { qc.setTier(q, { manual }); }
 
 // ---- Camera -------------------------------------------------------------------
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), camTarget = new THREE.Vector3(...C.CAMERA_POS), lookTarget = new THREE.Vector3(...C.CAMERA_LOOK);
-camPos.copy(camTarget); camLook.copy(lookTarget); let shake = 0;
+camPos.copy(camTarget); camLook.copy(lookTarget); let trauma = 0, hitstop = 0, anticip = 0, nextTier = 0, reduceMotion = false; // trauma model: amplitude = trauma², decays TRAUMA_DECAY/s
 export function applyFov(base) {
   const a = camera.aspect; // keep the horizontal field of view constant on narrow (portrait) screens
   camera.fov = a >= C.MIN_ASPECT_FOV ? base : THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(base / 2)) * C.MIN_ASPECT_FOV / a));
@@ -139,19 +151,22 @@ function updateCamera(dt) {
   else { camTarget.set((C.CAMERA_POS[0] + narrow * 3) * camDist, (C.CAMERA_POS[1] + py * 0.25) * camDist, (C.CAMERA_POS[2] + narrow * 2) * camDist); lookTarget.set(C.CAMERA_LOOK[0] - narrow * 4, C.CAMERA_LOOK[1] + py * 0.35, C.CAMERA_LOOK[2]); }
   const k = 1 - Math.exp(-C.CAMERA_SPRING * dt);
   camPos.lerp(camTarget, k); camLook.lerp(lookTarget, k);
-  shake = Math.max(0, shake - dt);
-  const sh = shake > 0 ? C.SHAKE_AMOUNT * (shake / C.SHAKE_TIME) : 0;
+  trauma = Math.max(0, trauma - C.TRAUMA_DECAY * dt);
+  const sh = reduceMotion ? 0 : trauma * trauma * C.SHAKE_MAX;
   camera.position.set(camPos.x + (Math.random() - 0.5) * sh, camPos.y + (Math.random() - 0.5) * sh, camPos.z);
   camera.lookAt(camLook);
-  applyFov(C.FOV_BASE + C.FOV_PUSH * norm);
+  anticip = Math.max(0, anticip - dt); const pull = reduceMotion || anticip <= 0 ? 0 : C.FOV_PULLBACK * Math.sin(Math.min(1, anticip / C.ANTICIPATION_LEAD) * Math.PI); // narrows then releases as the tier is crossed
+  applyFov(C.FOV_BASE + C.FOV_PUSH * norm - pull);
 }
 
 // ---- Effects hooks ----------------------------------------------------------------
 const CONFETTI = [0xff5c8a, 0x40e8ff, 0xffe27a, 0x7dff7a, 0xc07dff], ROCKET_COLORS = [0xff9a3a, 0xffe27a, 0xffffff];
-game.on('hit', o => { const P = biome.def.particles.impact; shake = C.SHAKE_TIME; fx.emit(0.2, 1.1, 0.3, P.n, P.colors, P.speed, P.gravity, P.life); audio.shieldLost(); audio.impact(biome.def.obstacles[o.userData.def.arch].impact); })
+game.on('hit', o => { const P = biome.def.particles.impact; trauma = Math.min(1, trauma + C.TRAUMA_HIT); hitstop = C.HITSTOP_MS / 1000; fx.emit(0.2, 1.1, 0.3, P.n, P.colors, P.speed, P.gravity, P.life); audio.shieldLost(); audio.impact(biome.def.obstacles[o.userData.def.arch].impact); })
     .on('milestone', () => { fx.emit(0, 1.5, 0.2, 60, CONFETTI, 7, -12, 1.4); audio.milestone(); })
     .on('pickup', () => { fx.emit(0, 1.4, 0.3, 30, [0xffffff, 0x40e8ff], 5, -6, 0.9); audio.pickup(); })
-    .on('land', () => { fx.emit(0, 0.05, 0.2, 8, biome.def.particles.trail.colors, 3, -8, 0.5, 0.4); audio.land(biome.def.audio.footstepTimbre); })
+    .on('land', () => { trauma = Math.min(1, trauma + C.TRAUMA_LAND); fx.emit(0, 0.05, 0.2, 10, biome.def.particles.trail.colors, 3, -8, 0.5, 0.4); audio.land(biome.def.audio.footstepTimbre); })
+    .on('nearMiss', () => { audio.whoosh(); hud.message('close!', 0.5, false, true); })
+    .on('speedTier', () => { anticip = C.ANTICIPATION_LEAD; audio.sweep(C.ANTICIPATION_LEAD); })
     .on('erupt', () => { const v = game.obstacles.active.find(o => o.userData.def.telegraph && o.userData.phase === 2); if (v) fx.emit(v.position.x, 0.5, 0, 30, [0xffffff, 0xe0f0ff], 4, 3, 1.2, 0.3); audio.erupt(); })
     .on('tutorial', () => audio.pickup())
     .on('jump', () => audio.jump()).on('step', s => audio.step(s, biome.def.audio.footstepTimbre)).on('hiss', () => audio.hiss())
@@ -170,8 +185,8 @@ function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h
 addEventListener('resize', resize); resize();
 // ---- Journey ---------------------------------------------------------------------------------------------------
 // Shader programs differ between on-screen and render-target output (tone mapping lives in the shader), so compile under the target the tier renders to.
-const parallelCompile = !!renderer.getContext().getExtension('KHR_parallel_shader_compile');
-async function compileFor(obj) { renderer.setRenderTarget(quality === 'low' ? null : composer.readBuffer); try { parallelCompile ? await renderer.compileAsync(obj, camera, scene) : renderer.compile(obj, camera, scene); } finally { renderer.setRenderTarget(null); } }
+const parallelCompile = WEBGPU || !!renderer.getContext().getExtension('KHR_parallel_shader_compile');
+async function compileFor(obj) { renderer.setRenderTarget(usesComposer() ? composer.readBuffer : null); try { parallelCompile ? await renderer.compileAsync(obj, camera, scene) : renderer.compile(obj, camera, scene); } finally { renderer.setRenderTarget(null); } }
 journey.gate.position.x = 900; // parked far away; warmUp() draws it hidden with everything else
 // Everything the swap needs, built on idle time: biome instance, obstacle pools, and compiled shaders. The swap itself is then a few scene ops.
 async function preparePending(id) {
@@ -215,13 +230,15 @@ game.on('state', s => { select.show(s === 'SELECT', store); hud.show(s !== 'SELE
 
 // ---- Settings ------------------------------------------------------------------------------------------------------
 let settingsFrom = null;
-async function autoTier() { let tier = guessTier(); if (tier !== 'low') { const fps = await probeFps(tier); if (fps < 30) tier = 'low'; else if (fps < 50 && tier === 'high') tier = 'medium'; } autoQuality = true; setQuality(tier); }
+async function autoTier() { let tier = guessTier(); if (tier !== 'low') { const fps = await probeFps(tier); if (fps < 30) tier = 'low'; else if (fps < 50 && tier === 'high') tier = 'medium'; } autoQuality = true; setQuality(tier, false); }
 const settings = new Settings({
   apply(key, v, initial, S) {
     switch (key) {
       case 'difficulty': game.setMode(v); break;
       case 'startSpeed': game.startSpeed = v; break;
-      case 'quality': if (initial) break; if (v === 'auto') autoTier(); else { autoQuality = false; setQuality(v); } break;
+      case 'quality': if (initial) break; if (v === 'auto') autoTier(); else { autoQuality = false; setQuality(v, true); } break;
+      case 'dynamicRes': qc.setDynamic(v); break;
+      case 'reduceMotion': reduceMotion = v; break;
       case 'highContrast': HC.desat.value = v ? 0.6 : 0; HC.sat.value = v ? 0.6 : 0; document.body.classList.toggle('hc', v); bloom.threshold = v ? 3 : biome.def.lighting.bloomThreshold; break; // bloom off for scenery: only the pickup core exceeds 3
       case 'palette': setPalette(v); document.documentElement.style.setProperty('--heart', PALETTES[v].heart); document.documentElement.style.setProperty('--accent', PALETTES[v].accent); break;
       case 'showFps': perf.panel.hidden = !v; break;
@@ -253,8 +270,8 @@ game.on('perf', () => perf.toggle()).on('perfinfo', () => perf.toggleInfo());
 if (params.get('latency')) { perf.enableLatency(); addEventListener('keydown', e => { if (!e.repeat) perf.press(e.timeStamp); }, true); addEventListener('pointerdown', e => perf.press(e.timeStamp), true); }
 {
   const urlQ = params.get('q');
-  if (urlQ && TIERS.includes(urlQ)) { autoQuality = false; setQuality(urlQ); }
-  else if (settings.s.quality !== 'auto') { autoQuality = false; setQuality(settings.s.quality); }
+  if (urlQ && TIERS.includes(urlQ)) { autoQuality = false; setQuality(urlQ, true); }
+  else if (settings.s.quality !== 'auto') { autoQuality = false; setQuality(settings.s.quality, true); }
   else await autoTier();
 }
 // ---- My robot (cosmetics) + sticker book + photo mode ----------------------------------------------------------------
@@ -280,7 +297,7 @@ let photo = false, photoA = 0.6, photoH = 2.4; const photoBar = document.getElem
 function setPhoto(v) { photo = v; document.body.classList.toggle('photo', v); photoBar.hidden = !v; if (v) { hud.pause(false); } else if (game.state === 'PAUSED') hud.pause(true); }
 document.getElementById('photobtn').onclick = e => { e.stopPropagation(); setPhoto(true); audio.uiClick(); };
 document.getElementById('photoback').onclick = e => { e.stopPropagation(); setPhoto(false); audio.uiClick(); };
-document.getElementById('photosave').onclick = e => { e.stopPropagation(); if (quality === 'low') renderer.render(scene, camera); else composer.render(); canvas.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `bolt-runner-${Date.now()}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }); audio.milestone(); };
+document.getElementById('photosave').onclick = e => { e.stopPropagation(); if (usesComposer()) composer.render(); else renderer.render(scene, camera); canvas.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `bolt-runner-${Date.now()}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }); audio.milestone(); };
 addEventListener('pointermove', e => { if (photo && e.buttons) { photoA += e.movementX * 0.01; photoH = THREE.MathUtils.clamp(photoH - e.movementY * 0.02, 0.6, 6); } });
 game.on('state', () => { if (photo) setPhoto(false); });
 // Shield Bubble + power-up feedback
@@ -299,18 +316,20 @@ addEventListener('keydown', firstGesture, true); addEventListener('pointerdown',
 // clamped so a backgrounded tab catches up by at most MAX_ACCUM of simulation. Visual updates (scrolling, particles, camera) advance by
 // exactly the time added to the accumulator, so they stay in lock-step with the interpolated obstacles.
 const TICK = 1 / C.TICK_RATE; let acc = 0;
-let last = performance.now(), frames = 0, fpsT = 0, lowFpsT = 0, breathT = 0, cpuMs = 0, moodT = 0;
+let last = performance.now(), breathT = 0, cpuMs = 0, moodT = 0;
 renderer.setAnimationLoop(now => {
   perf.begin(now);
   const raw = (now - last) / 1000, dt = Math.min(raw, C.MAX_DT); last = now; journey.frame(raw, cpuMs); const cpu0 = performance.now();
   const paused = game.state === 'PAUSED'; let ticks = 0;
+  qc.tick(raw, game.state === 'PLAYING', journey.state === 'gate' || !!journey.pending);
   if (!paused) {
-    const adv = Math.min(raw, C.MAX_ACCUM) * game.timeScale; acc = Math.min(acc + adv, C.MAX_ACCUM);
+    let adv = Math.min(raw, C.MAX_ACCUM) * game.timeScale; if (hitstop > 0) { hitstop -= raw; adv = 0; } // hit-stop: the world freezes for HITSTOP_MS, the camera, particles and audio do not
+    acc = Math.min(acc + adv, C.MAX_ACCUM);
     while (acc >= TICK) { acc -= TICK; ticks++; if (bench) bench.tick(TICK); game.tick(TICK); if (game.state === 'PLAYING') journey.tick(TICK, game.score, game.speed, journeyHooks); }
     const alpha = acc / TICK;
     game.frame(adv, alpha); journey.render(alpha, adv);
     world.update(adv, game.speed, game.score); game.robot.trailBright = world.trailBright;
-    fx.update(adv, game.speed); updateCamera(dt);
+    fx.update(adv > 0 ? adv : dt, game.speed); updateCamera(dt);
     const br = biome.def.particles.breath; if (br && game.state === 'PLAYING') { breathT += dt; if (breathT > br.every) { breathT = 0; fx.emit(0.4, game.renderY + 1.55, 0.3, 5, br.colors, 0.8, 0.6, 0.9, 0.3); } }
     moodT += raw; if (moodT > 0.1) { moodT = 0; audio.setMood(Math.min(1, Math.max(0, (game.speed - C.SPEED_START) / (C.SPEED_CAP.normal - C.SPEED_START))), world.cur.stars); } // AudioParam automation ten times a second, not per frame
   }
@@ -318,17 +337,13 @@ renderer.setAnimationLoop(now => {
   bubble.visible = game.bubble; if (bubble.visible) { bubble.position.set(0, game.renderY + 0.95, 0); bubble.rotation.y += dt; }
   if (game.rocket && !paused) fx.emit(-0.5, game.renderY + 0.3, 0.2, 3, ROCKET_COLORS, 4, 2, 0.4, 0.3);
   if (world.phaseName === 'night' && game.state === 'PLAYING') game.sawNight = true;
-  frames++; fpsT += raw; if (fpsT >= 0.5) { const fps = frames / fpsT; frames = 0; fpsT = 0;
-    // Auto-downgrade: sustained low FPS during play drops one tier (never while paused or on the first seconds after a switch).
-    if (autoQuality && game.state === 'PLAYING' && fps < C.FPS_DOWNGRADE_BELOW) { lowFpsT += 0.5; if (lowFpsT >= C.FPS_DOWNGRADE_AFTER && quality !== 'low') { setQuality(TIERS[TIERS.indexOf(quality) + 1]); hud.message('Quality → ' + quality, 1.2); lowFpsT = -3; } } else lowFpsT = Math.max(0, lowFpsT);
-  }
-  if (quality === 'low') renderer.render(scene, camera); else composer.render(); perf.flash(now);
+  if (usesComposer()) composer.render(); else renderer.render(scene, camera); perf.flash(now);
   // Pickup contrast plate: read the real background once per pickup (when its beam telegraphs, 2 s ahead) and once after a biome change — a readback is a pipeline flush, so never on a timer.
-  if (!paused && (game.needBg || bgOnce)) { game.needBg = false; bgOnce = false; game.obstacles.measureBackground(renderer, camera); } game.obstacles.pollBackground(renderer);
+  if (!WEBGPU) { if (!paused && (game.needBg || bgOnce)) { game.needBg = false; bgOnce = false; game.obstacles.measureBackground(renderer, camera); } game.obstacles.pollBackground(renderer); }
   cpuMs = performance.now() - cpu0;
   const pc = perf.counters; pc.ticks = ticks; pc.obstacles = game.obstacles.active.length; pc.particles = fx.live; pc.pooled = game.obstacles.pooledCount; pc.tier = quality; perf.end();
 });
-window.bolt = { game, world, renderer, scene, camera, journey, perf, shared, setQuality, switchBiome, get biome() { return biome; }, quality: () => quality, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
+window.bolt = { game, world, renderer, scene, camera, journey, perf, shared, qc, setQuality, switchBiome, get biome() { return biome; }, quality: () => quality, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
 // ---- Benchmark mode: no gesture needed, scripted input, JSON report on bolt.bench.done ----
 let bench = null;
 if (BENCH) { audio.muted = true; game.ready = true; loading.classList.add('done'); game.setState('MENU'); removeEventListener('keydown', firstGesture, true); removeEventListener('pointerdown', firstGesture, true); bench = window.bolt.bench = new Bench(window.bolt, params); bench.start(); }

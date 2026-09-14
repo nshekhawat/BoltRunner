@@ -47,8 +47,11 @@ export class World {
     this.skyU = { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, sunColor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, stars: { value: 0 }, aurora: { value: 0 }, time: { value: 0 }, uDesat: HC.desat };
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 16), new THREE.ShaderMaterial({ uniforms: this.skyU, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false }));
     scene.add(this.sky);
-    this.clouds = []; const cg = new THREE.PlaneGeometry(34, 13); this.cloudMat = injectHC(new THREE.MeshBasicMaterial({ map: this.T.cloud, transparent: true, depthWrite: false, opacity: 0.85, fog: true }));
-    for (let i = 0; i < 9; i++) { const m = new THREE.Mesh(cg, this.cloudMat); m.position.set(-100 + i * 26 + (i % 3) * 7, 24 + (i % 4) * 5, -80 - (i % 3) * 18); m.scale.setScalar(0.8 + (i % 3) * 0.3); scene.add(m); this.clouds.push(m); }
+    // Clouds: one InstancedMesh (one draw call for all nine); x scrolls per instance in a typed array.
+    const N_CLOUD = 9; this.cloudMat = injectHC(new THREE.MeshBasicMaterial({ map: this.T.cloud, transparent: true, depthWrite: false, opacity: 0.85, fog: true }));
+    this.clouds = new THREE.InstancedMesh(new THREE.PlaneGeometry(34, 13), this.cloudMat, N_CLOUD); this.clouds.frustumCulled = false; this.cloudX = new Float32Array(N_CLOUD); this.cloudY = new Float32Array(N_CLOUD); this.cloudZ = new Float32Array(N_CLOUD); this.cloudS = new Float32Array(N_CLOUD);
+    for (let i = 0; i < N_CLOUD; i++) { this.cloudX[i] = -100 + i * 26 + (i % 3) * 7; this.cloudY[i] = 24 + (i % 4) * 5; this.cloudZ[i] = -80 - (i % 3) * 18; this.cloudS[i] = 0.8 + (i % 3) * 0.3; }
+    this._m4 = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._v = new THREE.Vector3(); this._s = new THREE.Vector3(); this.placeClouds(); scene.add(this.clouds);
     this.shafts = []; const sg = new THREE.PlaneGeometry(7, 46);
     for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ map: this.T.shaft, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.2, fog: false })); m.position.set(-30 + i * 24, 18, -22 - (i % 2) * 8); m.rotation.z = 0.32; scene.add(m); this.shafts.push(m); }
     this.phase = -1; this.phaseOffset = 0; this.blend = 1; this.time = 0; this.cur = null; this.from = null; this.to = null; this.trailBright = 1;
@@ -64,6 +67,7 @@ export class World {
     if (!this.cur || immediate) { this.cur = target; this.from = toState(target); this.to = toState(target); this.blend = 1; this.applyState(); }
     else { this.from = toState(this.cur); this.to = target; this.blend = 0; }
   }
+  placeClouds() { const M = this.clouds; for (let i = 0; i < this.cloudX.length; i++) { this._v.set(this.cloudX[i], this.cloudY[i], this.cloudZ[i]); this._s.setScalar(this.cloudS[i]); this._m4.compose(this._v, this._q, this._s); M.setMatrixAt(i, this._m4); } M.instanceMatrix.needsUpdate = true; }
   phaseIndex() { return (((this.cycle ?? 0) + this.phaseOffset + (this.startPhaseOverride ?? this.biome.def.startPhase)) % 4 + 4) % 4; } // Journey pins the start phase so time of day flows across seams
   jumpToPhase(i) { this.phase = i; this.cur = toState(this.biome.def.dayNight[i]); this.from = toState(this.cur); this.to = toState(this.cur); this.blend = 1; this.applyState(); } // debug: no blend
   get phaseName() { return ['dawn', 'noon', 'dusk', 'night'][this.phase]; }
@@ -80,7 +84,7 @@ export class World {
     this.scene.fog.color.copy(s.fog); this.scene.background = null;
     this.sun.color.copy(s.sun); this.sun.intensity = s.sunI; this.hemi.color.copy(s.hemiSky); this.hemi.groundColor.copy(s.hemiGround); this.hemi.intensity = s.hemiI;
     this.scene.environmentIntensity = s.env; this.eyeLight.intensity = s.eyeLight;
-    for (const m of this.shafts) m.material.opacity = 0.22 * s.shafts;
+    for (const m of this.shafts) { m.material.opacity = 0.22 * s.shafts; m.visible = this.shaftsAllowed !== false && s.shafts > 0.02; } // invisible when off: five large additive quads of pure overdraw otherwise
     this.cloudMat.color.copy(s.cloud);
     this.trailBright = s.trail;
   }
@@ -97,11 +101,8 @@ export class World {
     const dx = speed * dt, gm = B.groundMat;
     gm.map.offset.x += dx / 10 * B.def.ground.scrollDetail; gm.normalMap.offset.x = gm.map.offset.x; if (gm.roughnessMap) gm.roughnessMap.offset.x = gm.map.offset.x;
     B.laneMat.map.offset.x += dx / 10;
-    for (const L of B.layers) { for (const m of [L.a, L.b]) { m.position.x -= dx * L.par; if (m.position.x < -20 - L.len) m.position.x += 2 * L.len; } L.def.update?.(L, dt, this.time); }
-    for (const P of B.props) {
-      let maxX = -Infinity; for (const g of P.items) maxX = Math.max(maxX, g.position.x);
-      for (const g of P.items) { g.position.x -= dx; P.def.update?.(g, dt, this.time); if (g.position.x < C.DESPAWN_X - 6) { g.position.x = maxX + P.def.every[0] + Math.random() * (P.def.every[1] - P.def.every[0]); maxX = g.position.x; g.position.z = P.def.z[0] + Math.random() * (P.def.z[1] - P.def.z[0]); } }
-    }
+    for (let i = 0; i < B.layers.length; i++) { const L = B.layers[i], m = L.a; m.position.x -= dx * L.par; if (m.position.x < -20 - L.len) m.position.x += L.len; if (L.def.update) L.def.update(L, dt, this.time); }
+    for (let i = 0; i < B.props.length; i++) { const P = B.props[i], b = P.band; b.position.x -= dx; if (b.position.x < -20 - P.len) b.position.x += P.len; if (P.def.update) for (let k = 0; k < P.items.length; k++) P.def.update(P.items[k], dt, this.time); }
     for (const A of B.ambient) {
       const p = A.pos, s = A.spec, ax = s.area.x, ay = s.area.y, az = s.area.z, v = s.vel, sway = s.sway ?? 0, wx = ax[1] - ax[0], wy = ay[1] - ay[0];
       for (let i = 0; i < A.n; i++) {
@@ -112,8 +113,8 @@ export class World {
       if (s.blink) A.pts.material.opacity = (s.opacity ?? 0.6) * (0.35 + 0.65 * Math.max(0, Math.sin(this.time * s.blink.rate + s.blink.phase)));
       A.pts.geometry.attributes.position.needsUpdate = true;
     }
-    for (const c of this.clouds) { c.position.x -= (dx * 0.05 + dt * 0.6); if (c.position.x < -140) c.position.x += 260; }
-    for (const s of this.shafts) { s.position.x -= dx * 0.5; if (s.position.x < -50) s.position.x += 120; }
+    { const X = this.cloudX, d = dx * 0.05 + dt * 0.6; for (let i = 0; i < X.length; i++) { X[i] -= d; if (X[i] < -140) X[i] += 260; } this.placeClouds(); }
+    if (this.shafts[0].visible) for (const s of this.shafts) { s.position.x -= dx * 0.5; if (s.position.x < -50) s.position.x += 120; }
     this.sky.position.copy(this.camera.position); this.skyU.time.value = this.time;
   }
 }

@@ -55,7 +55,7 @@ export default {
     { speedFactor: 0.15, y: 0, z: -62, len: 220, makeLayer(ctx, M) { const { prim: P } = ctx, g = P.group(), rnd = ctx.rnd(12); let x = 0, i = 0; // big trees and one waterfall
       while (x < 210) { const t = tree(ctx, M, 8 + rnd() * 6, i); t.position.x = x; g.add(t); x += 7 + rnd() * 8; i++; }
       const cliff = P.box(14, 22, 6, M.hill[1], 100, 11, -6); g.add(cliff); const fall = P.plane(3.5, 20, M.water, 100, 11, -2.9); fall.name = 'fall'; g.add(fall); g.add(P.sphere(3, M.water, 100, 0.5, -2, 10)); return g; },
-      update: (L, dt) => { for (const m of [L.a, L.b]) { const f = m.getObjectByName('fall'); f.material.map.offset.y -= dt * 0.8; } } },
+      update: (L, dt) => { (L.fall ??= L.a.getObjectByName('fall')).material.map.offset.y -= dt * 0.8; } }, // one shared material: scroll it once
     { speedFactor: 0.07, y: 0, z: -115, len: 260, makeLayer(ctx, M) { const { prim: P } = ctx, g = P.group(), rnd = ctx.rnd(13); let x = 0, i = 0; while (x < 250) { g.add(P.sphere(14 + rnd() * 10, M.hill[i % 3], x, -4 + rnd() * 6, 0, 12)); x += 16 + rnd() * 12; i++; } return g; } },
   ],
   props: [

@@ -97,7 +97,7 @@ export function setQuality(q, persist = false) {
   bloom.enabled = q === 'high'; renderer.shadowMap.enabled = q !== 'low';
   world.sun.castShadow = q !== 'low'; world.sun.shadow.mapSize.setScalar(q === 'high' ? 1024 : 512); if (world.sun.shadow.map) { world.sun.shadow.map.dispose(); world.sun.shadow.map = null; }
   scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
-  fx.budget = q === 'low' ? 0.4 : 1; for (const s of world.shafts) s.visible = q !== 'low';
+  fx.budget = q === 'low' ? 0.4 : 1; world.shaftsAllowed = q !== 'low'; if (world.cur) world.applyState();
   renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'low' ? 1 : matchMedia('(pointer: coarse)').matches ? C.MOBILE_PIXEL_RATIO : C.MAX_PIXEL_RATIO)); resize();
 }
 

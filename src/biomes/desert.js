@@ -68,7 +68,7 @@ export default {
   props: [
     { count: 6, every: [14, 30], z: [-13, -4], scale: [0.7, 1.3], make: (ctx, M, i) => cactus(ctx, M, 0.8, 1.4 + (i % 3) * 0.4, i % 3) },
     { count: 5, every: [18, 40], z: [-12, -5], scale: [0.6, 1.4], make: (ctx, M, i) => { const g = ctx.prim.group(); g.add(ctx.prim.cone(0.7, 1.0, M.rock, 0, 0.45, 0, 6), ctx.prim.cone(0.4, 0.6, M.rock, 0.5 + (i % 2) * 0.2, 0.25, 0.3, 5)); return g; } },
-    { count: 2, every: [60, 140], z: [-30, -18], make: (ctx, M) => { const { THREE } = ctx, g = ctx.prim.group(); const m = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 0.25, 7, 10, 1, true), M.dust); m.position.y = 3.5; g.add(m); return g; }, update: (g, dt) => { g.rotation.y += dt * 4; } }, // dust devil
+    { count: 2, every: [60, 140], z: [-30, -18], make: (ctx, M) => { const { THREE } = ctx, g = ctx.prim.group(); const m = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 0.25, 7, 10, 1, true), M.dust); m.position.y = 3.5; m.name = 'devil'; g.add(m); return g; }, update: (g, dt) => { g.rotation.y += dt * 4; } }, // dust devil (named: it spins, so it must not be merged into the band)
   ],
   particles: {
     ambient: [{ count: 160, color: 0xfff2d0, size: 0.09, opacity: 0.5, vel: [-0.4, 0, 0], sway: 0.3, area: { x: [-10, 30], y: [0, 8], z: [-8, 8] } }],

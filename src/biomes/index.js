@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { CONFIG as C } from '../config.js';
 import { canvasTexture, makeNoiseTexture, heightToNormal, fbm, smooth, clamp255, mix, injectHC } from '../textures.js';
+import { mergeStatic, doubleAlongX } from '../merge.js';
 export { BIOMES, BIOME_IDS } from './registry.js';
 
 const shadowed = m => { m.castShadow = true; m.receiveShadow = true; return m; };
@@ -51,17 +52,20 @@ export function* buildBiome(def, shared) {
   const lmap = def.lane.makeTexture(ctx); lmap.repeat.set(40, 1); yield;
   inst.laneMat = new THREE.MeshBasicMaterial({ map: lmap, transparent: true, depthWrite: false });
   inst.lane = new THREE.Mesh(new THREE.PlaneGeometry(400, def.lane.width), inst.laneMat); inst.lane.rotation.x = -Math.PI / 2; inst.lane.position.set(0, 0.012, 0.25); inst.root.add(inst.lane);
-  // Parallax layers: two copies of a strip so it wraps seamlessly.
+  // Parallax layers: one mesh per material holding two periods of the strip, so it wraps seamlessly by jumping back one period.
+  // Far scenery never casts a shadow that reaches the lane (the sun sits on the camera side), so it stays out of the shadow pass.
   def.parallax.forEach((L, i) => {
-    const a = L.makeLayer(ctx, inst.M, i), b = a.clone(); a.position.set(-20, L.y, L.z); b.position.set(-20 + L.len, L.y, L.z); inst.root.add(a, b);
-    inst.layers.push({ a, b, par: L.speedFactor, len: L.len, def: L });
+    const a = doubleAlongX(mergeStatic(L.makeLayer(ctx, inst.M, i)), L.len); a.position.set(-20, L.y, L.z); a.traverse(o => { o.castShadow = false; }); inst.root.add(a);
+    inst.layers.push({ a, par: L.speedFactor, len: L.len, def: L });
   });
   yield;
-  // Decor props: pooled instances recycled along x.
+  // Decor props: each prop type is one scrolling band (static parts merged into one mesh per material, named parts kept per item for the
+  // update hooks), doubled along x like a parallax layer. Spacing, depth and scale are randomised once at build time.
   for (const P of def.props) {
-    const items = []; let x = -20;
-    for (let i = 0; i < P.count; i++) { const g = P.make(ctx, inst.M, i); g.position.set(x, 0, P.z[0] + Math.random() * (P.z[1] - P.z[0])); if (P.scale) g.scale.setScalar(P.scale[0] + Math.random() * (P.scale[1] - P.scale[0])); inst.root.add(g); items.push(g); x += P.every[0] + Math.random() * (P.every[1] - P.every[0]); }
-    inst.props.push({ def: P, items });
+    const band = new THREE.Group(), items = []; let x = 0;
+    for (let i = 0; i < P.count; i++) { const g = P.make(ctx, inst.M, i); g.position.set(x, 0, P.z[0] + Math.random() * (P.z[1] - P.z[0])); if (P.scale) g.scale.setScalar(P.scale[0] + Math.random() * (P.scale[1] - P.scale[0])); band.add(g); items.push(g); x += P.every[0] + Math.random() * (P.every[1] - P.every[0]); }
+    const len = Math.max(x, 90); mergeStatic(band); doubleAlongX(band, len); band.position.x = -20; inst.root.add(band); // ≥ 90 u so a period never repeats inside the view
+    inst.props.push({ def: P, items, band, len });
   }
   yield;
   for (const A of def.particles.ambient) { const a = makeAmbient(A, shared); inst.ambient.push(a); inst.root.add(a.pts); }

@@ -1,0 +1,12 @@
+# When this file exists the Vercel CLI uses it INSTEAD of .gitignore, so every secret and
+# build artefact must be listed here explicitly — .env would otherwise be uploaded and served.
+.env
+.env.*
+node_modules
+.git
+.DS_Store
+
+# Dev tooling: not part of the game. It lives in the GitHub repo, not on the site.
+test
+perf
+check.mjs

@@ -22,6 +22,30 @@ python3 -m http.server 8000
 Three.js (`0.186.0`, pinned in the import map in `index.html`) is the only thing loaded from
 the network, once, from jsDelivr. Every texture, model and sound is generated in code.
 
+## Deploying
+
+The game is static files, so any static host works. It is deployed on Vercel's free (Hobby)
+tier; `vercel.json` sets the project to no framework, no build command and the repository root
+as the output directory.
+
+```sh
+npx vercel deploy --prod --token "$VERCEL_TOKEN"
+```
+
+Two things about that setup are deliberate:
+
+- **Nothing is cached beyond a revalidation** (`Cache-Control: public, max-age=0,
+  must-revalidate` for every path). With no build step there are no hashed filenames, so a
+  cached `src/main.js` served against a fresh `index.html` would break the import map. ETags
+  still make repeat visits `304`s.
+- **`.vercelignore` replaces `.gitignore`** for CLI uploads rather than adding to it, so `.env`
+  is listed there explicitly. Without that line the file would be uploaded and served at
+  `/.env`. The dev tooling (`test/`, `perf/`, `check.mjs`) is excluded too: it belongs in the
+  repository, not on the site.
+
+A Worker (`src/noise-worker.js`) is loaded through `new URL(..., import.meta.url)`, so the site
+must be served from the root of its domain, as it is here.
+
 ## Controls
 
 | Action | Keyboard | Touch |

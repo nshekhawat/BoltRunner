@@ -383,8 +383,26 @@ transitions. CPU p95 is 2.8–3.4 ms on every tier; GPU p50 is 1.5–1.9 ms (Low
 
 (The M4 worst frames are the first-draw shader stalls that M5 removed; the M6–M9 worst
 frames are uncapped queue flushes — with vsync the same runs have no frame over 16.8 ms.)
-Journey with vsync: 90 s, two transitions, worst frame 16.8 ms, swap 2.2 ms (v2.1: frames
-of 66–116 ms during transitions). Press-to-pixel: 1 frame (`?latency=1`, keydown to render
+Journey with vsync: 90 s, two transitions, worst frame 16.8 ms, swap 2.2 ms.
+
+The v2.1 baseline **with vsync** (`perf/baseline-vsync.json`) is the honest comparison, and it
+shows what this hardware hides: on the M3 the old build already presented cleanly at 60 Hz
+(p99 16.8 ms everywhere, a handful of 33 ms frames, Journey worst 16.8 ms — the 66–116 ms
+transition frames in the uncapped baseline were queue flushes). What changed is headroom, which
+is the whole story on an integrated GPU that has a quarter of this one's fill rate:
+
+| Medium tier, vsync, 60 s | v2.1 | v3 |
+|---|---|---|
+| GPU per frame p50 (desert / city / jungle / frost) | 5.0 / 5.2 / 5.3 / 5.2 ms | 2.1 / 2.4 / 2.6 / 2.4 ms |
+| draw calls | 176 / 209 / 445 / 492 | 64 / 91 / 79 / 68 |
+| CPU p95 | 3.5 / 3.9 / 4.0 / 4.3 ms | 3.1 / 3.3 / 3.4 / 3.0 ms |
+| frames over 25 ms in 60 s | 1 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
+| High tier GPU p50 | 9.6 / 10.6 / 10.6 / 10.6 ms | 8.9 / 9.3 / 6.5 / 6.7 ms |
+
+At four times the per-pixel cost, v2.1 Medium would sit at ~20 ms of GPU time per frame on an
+integrated part and v3 at ~10 ms; that is the difference between the p95 budget and a
+permanently dropped frame. **This has not yet been measured on such a device** — the
+benchmark is ready for it (`node perf/bench.mjs --vsync`). Press-to-pixel: 1 frame (`?latency=1`, keydown to render
 submit 4–20 ms at 60 Hz). Heap: the sampling profiler finds no per-frame retention in game
 code; the remaining slow growth (~0.1 MB/s, flattening) is V8 code/feedback space attributed
 to three.js internals. `renderer.info.memory` returns to identical numbers every cycle of

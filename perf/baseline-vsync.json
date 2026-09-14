@@ -1,0 +1,771 @@
+{
+ "date": "2026-09-14T12:43:15.035Z",
+ "label": "v2.1 baseline, vsync",
+ "commit": "2e4a3a0",
+ "secs": 60,
+ "tiers": {
+  "high": {
+   "hardware": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+   "seed": 1,
+   "secs": 60,
+   "tier": "high",
+   "dpr": 1,
+   "size": [
+    1280,
+    633
+   ],
+   "biomes": {
+    "desert": {
+     "frames": 3599,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 57.9,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.7,
+      "p99": 16.8,
+      "max": 33.2,
+      "over25": 1
+     },
+     "cpu": {
+      "p50": 2.7,
+      "p95": 3.4,
+      "p99": 3.7,
+      "max": 40.2
+     },
+     "gpu": {
+      "p50": 9.58,
+      "p95": 10.28
+     },
+     "calls": {
+      "p50": 187,
+      "max": 236
+     },
+     "triangles": 17701,
+     "heap": {
+      "startMB": 13.4,
+      "endMB": 15.2,
+      "gcEvents": 58,
+      "gcMaxFrameMs": 3.8,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 100,
+       "textures": 32
+      },
+      "end": {
+       "geometries": 198,
+       "textures": 35
+      }
+     },
+     "score": 1119,
+     "speed": 26
+    },
+    "city": {
+     "frames": 3600,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.8,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 2.9,
+      "p95": 3.8,
+      "p99": 4.1,
+      "max": 22.2
+     },
+     "gpu": {
+      "p50": 10.59,
+      "p95": 11
+     },
+     "calls": {
+      "p50": 224,
+      "max": 263
+     },
+     "triangles": 16089,
+     "heap": {
+      "startMB": 14.5,
+      "endMB": 15.8,
+      "gcEvents": 118,
+      "gcMaxFrameMs": 4.1,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 135,
+       "textures": 40
+      },
+      "end": {
+       "geometries": 228,
+       "textures": 43
+      }
+     },
+     "score": 1390,
+     "speed": 26
+    },
+    "jungle": {
+     "frames": 3600,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.8,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 2.8,
+      "p95": 3.5,
+      "p99": 4.3,
+      "max": 27.1
+     },
+     "gpu": {
+      "p50": 10.64,
+      "p95": 11.06
+     },
+     "calls": {
+      "p50": 461,
+      "max": 537
+     },
+     "triangles": 34021,
+     "heap": {
+      "startMB": 16.3,
+      "endMB": 17.8,
+      "gcEvents": 85,
+      "gcMaxFrameMs": 3.5,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 287,
+       "textures": 40
+      },
+      "end": {
+       "geometries": 409,
+       "textures": 40
+      }
+     },
+     "score": 1233,
+     "speed": 26
+    },
+    "frostpeak": {
+     "frames": 3600,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.7,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 2.7,
+      "p95": 3.5,
+      "p99": 4.3,
+      "max": 19.6
+     },
+     "gpu": {
+      "p50": 10.59,
+      "p95": 11.86
+     },
+     "calls": {
+      "p50": 502,
+      "max": 575
+     },
+     "triangles": 21925,
+     "heap": {
+      "startMB": 15.9,
+      "endMB": 17,
+      "gcEvents": 44,
+      "gcMaxFrameMs": 3.4,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 319,
+       "textures": 38
+      },
+      "end": {
+       "geometries": 388,
+       "textures": 39
+      }
+     },
+     "score": 1390,
+     "speed": 26
+    },
+    "journey": {
+     "frames": 5399,
+     "seconds": 90,
+     "fps": 60,
+     "low1": 58.4,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.7,
+      "p99": 16.8,
+      "max": 33.2,
+      "over25": 1
+     },
+     "cpu": {
+      "p50": 2.8,
+      "p95": 3.5,
+      "p99": 3.9,
+      "max": 20.5
+     },
+     "gpu": {
+      "p50": 10.23,
+      "p95": 10.95
+     },
+     "calls": {
+      "p50": 203,
+      "max": 562
+     },
+     "triangles": 17673,
+     "heap": {
+      "startMB": 16.9,
+      "endMB": 17.4,
+      "gcEvents": 113,
+      "gcMaxFrameMs": 15.9,
+      "gcOver5ms": 1
+     },
+     "memory": {
+      "start": {
+       "geometries": 106,
+       "textures": 38
+      },
+      "end": {
+       "geometries": 333,
+       "textures": 40
+      }
+     },
+     "journey": {
+      "transitions": 3,
+      "frameMax": 16.8,
+      "overruns": 0,
+      "swapMs": 1.2
+     },
+     "score": 2294,
+     "speed": 26
+    }
+   }
+  },
+  "medium": {
+   "hardware": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+   "seed": 1,
+   "secs": 60,
+   "tier": "medium",
+   "dpr": 1,
+   "size": [
+    1280,
+    633
+   ],
+   "biomes": {
+    "desert": {
+     "frames": 3599,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 57.9,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.7,
+      "p99": 16.8,
+      "max": 33.3,
+      "over25": 1
+     },
+     "cpu": {
+      "p50": 2.8,
+      "p95": 3.5,
+      "p99": 3.9,
+      "max": 37.8
+     },
+     "gpu": {
+      "p50": 4.98,
+      "p95": 5.18
+     },
+     "calls": {
+      "p50": 176,
+      "max": 221
+     },
+     "triangles": 18030,
+     "heap": {
+      "startMB": 13.3,
+      "endMB": 15.2,
+      "gcEvents": 58,
+      "gcMaxFrameMs": 23,
+      "gcOver5ms": 1
+     },
+     "memory": {
+      "start": {
+       "geometries": 100,
+       "textures": 32
+      },
+      "end": {
+       "geometries": 190,
+       "textures": 36
+      }
+     },
+     "score": 1171,
+     "speed": 26
+    },
+    "city": {
+     "frames": 3600,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.8,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 3.1,
+      "p95": 3.9,
+      "p99": 4.3,
+      "max": 20.4
+     },
+     "gpu": {
+      "p50": 5.24,
+      "p95": 5.42
+     },
+     "calls": {
+      "p50": 209,
+      "max": 251
+     },
+     "triangles": 15864,
+     "heap": {
+      "startMB": 14.5,
+      "endMB": 15.9,
+      "gcEvents": 27,
+      "gcMaxFrameMs": 4.2,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 136,
+       "textures": 41
+      },
+      "end": {
+       "geometries": 213,
+       "textures": 42
+      }
+     },
+     "score": 1129,
+     "speed": 26
+    },
+    "jungle": {
+     "frames": 3600,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.7,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 2.8,
+      "p95": 4,
+      "p99": 4.5,
+      "max": 15.9
+     },
+     "gpu": {
+      "p50": 5.29,
+      "p95": 5.46
+     },
+     "calls": {
+      "p50": 445,
+      "max": 540
+     },
+     "triangles": 33960,
+     "heap": {
+      "startMB": 16.3,
+      "endMB": 17.7,
+      "gcEvents": 43,
+      "gcMaxFrameMs": 4.6,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 287,
+       "textures": 39
+      },
+      "end": {
+       "geometries": 399,
+       "textures": 40
+      }
+     },
+     "score": 1514,
+     "speed": 26
+    },
+    "frostpeak": {
+     "frames": 3600,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.7,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 2.9,
+      "p95": 4.3,
+      "p99": 4.9,
+      "max": 19.2
+     },
+     "gpu": {
+      "p50": 5.23,
+      "p95": 5.35
+     },
+     "calls": {
+      "p50": 492,
+      "max": 578
+     },
+     "triangles": 22050,
+     "heap": {
+      "startMB": 15.8,
+      "endMB": 17,
+      "gcEvents": 23,
+      "gcMaxFrameMs": 4,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 319,
+       "textures": 38
+      },
+      "end": {
+       "geometries": 397,
+       "textures": 39
+      }
+     },
+     "score": 1305,
+     "speed": 26
+    },
+    "journey": {
+     "frames": 5400,
+     "seconds": 90,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.7,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 2.9,
+      "p95": 3.6,
+      "p99": 4.1,
+      "max": 20.1
+     },
+     "gpu": {
+      "p50": 5.01,
+      "p95": 5.3
+     },
+     "calls": {
+      "p50": 189,
+      "max": 533
+     },
+     "triangles": 17726,
+     "heap": {
+      "startMB": 16.9,
+      "endMB": 21.5,
+      "gcEvents": 70,
+      "gcMaxFrameMs": 3.9,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 106,
+       "textures": 38
+      },
+      "end": {
+       "geometries": 349,
+       "textures": 41
+      }
+     },
+     "journey": {
+      "transitions": 2,
+      "frameMax": 16.8,
+      "overruns": 0,
+      "swapMs": 1.2
+     },
+     "score": 2274,
+     "speed": 26
+    }
+   }
+  },
+  "low": {
+   "hardware": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+   "seed": 1,
+   "secs": 60,
+   "tier": "low",
+   "dpr": 1,
+   "size": [
+    1280,
+    633
+   ],
+   "biomes": {
+    "desert": {
+     "frames": 3599,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 57.9,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.8,
+      "p99": 16.8,
+      "max": 33.4,
+      "over25": 1
+     },
+     "cpu": {
+      "p50": 2.7,
+      "p95": 3.3,
+      "p99": 3.6,
+      "max": 36.2
+     },
+     "gpu": {
+      "p50": 1.59,
+      "p95": 1.79
+     },
+     "calls": {
+      "p50": 149,
+      "max": 199
+     },
+     "triangles": 16772,
+     "heap": {
+      "startMB": 13.4,
+      "endMB": 15.1,
+      "gcEvents": 53,
+      "gcMaxFrameMs": 3.4,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 100,
+       "textures": 30
+      },
+      "end": {
+       "geometries": 209,
+       "textures": 33
+      }
+     },
+     "score": 1119,
+     "speed": 26
+    },
+    "city": {
+     "frames": 3600,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.7,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 3,
+      "p95": 3.8,
+      "p99": 4.1,
+      "max": 22.7
+     },
+     "gpu": {
+      "p50": 1.81,
+      "p95": 2.04
+     },
+     "calls": {
+      "p50": 185,
+      "max": 225
+     },
+     "triangles": 15254,
+     "heap": {
+      "startMB": 14.4,
+      "endMB": 15.8,
+      "gcEvents": 26,
+      "gcMaxFrameMs": 3.8,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 135,
+       "textures": 38
+      },
+      "end": {
+       "geometries": 228,
+       "textures": 40
+      }
+     },
+     "score": 1305,
+     "speed": 26
+    },
+    "jungle": {
+     "frames": 3599,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 57.9,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.8,
+      "p99": 16.8,
+      "max": 33.4,
+      "over25": 1
+     },
+     "cpu": {
+      "p50": 2.6,
+      "p95": 4.3,
+      "p99": 4.7,
+      "max": 30.1
+     },
+     "gpu": {
+      "p50": 1.87,
+      "p95": 1.99
+     },
+     "calls": {
+      "p50": 401,
+      "max": 465
+     },
+     "triangles": 32722,
+     "heap": {
+      "startMB": 16.3,
+      "endMB": 17.6,
+      "gcEvents": 41,
+      "gcMaxFrameMs": 4.6,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 280,
+       "textures": 37
+      },
+      "end": {
+       "geometries": 407,
+       "textures": 38
+      }
+     },
+     "score": 1181,
+     "speed": 26
+    },
+    "frostpeak": {
+     "frames": 3600,
+     "seconds": 60,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.7,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 2.7,
+      "p95": 4.3,
+      "p99": 4.5,
+      "max": 21.5
+     },
+     "gpu": {
+      "p50": 1.82,
+      "p95": 1.96
+     },
+     "calls": {
+      "p50": 445,
+      "max": 540
+     },
+     "triangles": 21168,
+     "heap": {
+      "startMB": 15.8,
+      "endMB": 16.8,
+      "gcEvents": 23,
+      "gcMaxFrameMs": 3.7,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "geometries": 319,
+       "textures": 35
+      },
+      "end": {
+       "geometries": 398,
+       "textures": 36
+      }
+     },
+     "score": 1357,
+     "speed": 26
+    },
+    "journey": {
+     "frames": 5400,
+     "seconds": 90,
+     "fps": 60,
+     "low1": 59.5,
+     "frame": {
+      "p50": 16.7,
+      "p95": 16.8,
+      "p99": 16.8,
+      "max": 16.8,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 2.7,
+      "p95": 3.6,
+      "p99": 4.3,
+      "max": 23.2
+     },
+     "gpu": {
+      "p50": 1.7,
+      "p95": 1.91
+     },
+     "calls": {
+      "p50": 159,
+      "max": 511
+     },
+     "triangles": 17074,
+     "heap": {
+      "startMB": 16.8,
+      "endMB": 20,
+      "gcEvents": 32,
+      "gcMaxFrameMs": 21.5,
+      "gcOver5ms": 1
+     },
+     "memory": {
+      "start": {
+       "geometries": 106,
+       "textures": 35
+      },
+      "end": {
+       "geometries": 388,
+       "textures": 44
+      }
+     },
+     "journey": {
+      "transitions": 3,
+      "frameMax": 16.8,
+      "overruns": 0,
+      "swapMs": 1.5
+     },
+     "score": 2242,
+     "speed": 26
+    }
+   }
+  }
+ },
+ "hardware": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36"
+}

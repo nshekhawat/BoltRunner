@@ -9,13 +9,13 @@ export const pad5 = n => String(Math.min(99999, n | 0)).padStart(5, '0');
 export const fmtTime = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}.${String(Math.floor((s * 100) % 100)).padStart(2, '0')}`;
 const LINES = ['You are getting faster every time!', 'That robot is lucky to have you.', 'Great jumping! Ready for one more?', 'The canyon says: come back soon!', 'Bolt is proud of you.', 'So close to a new record!', 'Your reflexes are sparkling ⚡'];
 
-let lastScore = -1, lastTimer = '', lastCombo = -1, lastShields = -1, msgTimer = 0, lineIdx = Math.floor(Math.random() * LINES.length);
+let lastScore = -1, lastTimer = -1, lastCombo = -1, lastShields = -1, msgTimer = 0, lineIdx = Math.floor(Math.random() * LINES.length);
 export const hud = {
   el,
   show(v) { el.hud.hidden = !v; },
   score(n) { if (n !== lastScore) { el.score.textContent = pad5(n); lastScore = n; } },
   flashScore() { el.scoreBox.classList.remove('flash'); void el.scoreBox.offsetWidth; el.scoreBox.classList.add('flash'); },
-  timer(s) { const t = fmtTime(s); if (t !== lastTimer) { el.timer.textContent = t; lastTimer = t; } },
+  timer(s) { const cs = (s * 100) | 0; if (cs === lastTimer) return; lastTimer = cs; el.timer.textContent = fmtTime(s); }, // strings only when the displayed centisecond changes
   combo(n) { if (n !== lastCombo) { el.combo.textContent = n >= 2 ? `×${n} combo` : ''; lastCombo = n; } },
   shields(n, max) { if (n === lastShields) return; lastShields = n; el.shields.innerHTML = Array.from({ length: max }, (_, i) => `<span class="${i < n ? '' : 'lost'}">${HEART}</span>`).join(''); },
   message(text, secs = 1, bounce = false, small = false) { el.msg.textContent = text; el.msg.classList.toggle('bounce', bounce); el.msg.classList.toggle('small', small); msgTimer = secs; },

@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { CONFIG as C } from '../config.js';
 import { canvasTexture, makeNoiseTexture, heightToNormal, fbm, smooth, clamp255, mix, injectHC } from '../textures.js';
 import { mergeStatic, doubleAlongX } from '../merge.js';
+import { beginRecording, endRecording } from '../noise.js';
+export const NOISE_LISTS = {}; // biome id → noise field keys it requested (learned on first build; main.js persists and prefetches them)
 export { BIOMES, BIOME_IDS } from './registry.js';
 
 const shadowed = m => { m.castShadow = true; m.receiveShadow = true; return m; };
@@ -41,17 +43,17 @@ function makeAmbient(spec, shared) {
 // Build a biome instance. A generator: each `yield` is a safe point to give the frame back (Journey builds on idle time).
 export function* buildBiome(def, shared) {
   const inst = { def, textures: new Set(), root: new THREE.Group(), M: null, layers: [], props: [], ambient: [] };
-  const ctx = inst.ctx = makeCtx(shared, inst);
+  const ctx = inst.ctx = makeCtx(shared, inst); beginRecording();
   inst.M = yield* def.makeMaterials(ctx);
-  // Ground plane + lane strip
-  const gmap = def.ground.makeTexture(ctx), gnorm = def.ground.makeNormal(ctx), grough = def.ground.makeRoughness?.(ctx); yield;
+  // Ground plane + lane strip (one texture per step: each is a few ms once the noise fields are prefetched)
+  const gmap = def.ground.makeTexture(ctx); yield; const gnorm = def.ground.makeNormal(ctx); yield; const grough = def.ground.makeRoughness?.(ctx); yield;
   const gopts = { ...def.ground.material }; if (grough) gopts.roughnessMap = grough; if (gopts.normalScale) gopts.normalScale = new THREE.Vector2(gopts.normalScale.x, gopts.normalScale.y);
   inst.groundMat = new THREE.MeshStandardMaterial({ map: gmap, normalMap: gnorm, roughness: 1, metalness: 0, ...gopts });
   for (const t of [gmap, gnorm, inst.groundMat.roughnessMap]) if (t) { t.repeat.set(40 * def.ground.scrollDetail, 12 * def.ground.scrollDetail); t.wrapS = t.wrapT = THREE.RepeatWrapping; }
-  inst.ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 120), inst.groundMat); inst.ground.rotation.x = -Math.PI / 2; inst.ground.receiveShadow = true; inst.root.add(inst.ground);
+  inst.ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 120), inst.groundMat); inst.ground.rotation.x = -Math.PI / 2; inst.ground.receiveShadow = true; inst.ground.updateMatrix(); inst.ground.matrixAutoUpdate = false; inst.root.add(inst.ground);
   const lmap = def.lane.makeTexture(ctx); lmap.repeat.set(40, 1); yield;
   inst.laneMat = new THREE.MeshBasicMaterial({ map: lmap, transparent: true, depthWrite: false });
-  inst.lane = new THREE.Mesh(new THREE.PlaneGeometry(400, def.lane.width), inst.laneMat); inst.lane.rotation.x = -Math.PI / 2; inst.lane.position.set(0, 0.012, 0.25); inst.root.add(inst.lane);
+  inst.lane = new THREE.Mesh(new THREE.PlaneGeometry(400, def.lane.width), inst.laneMat); inst.lane.rotation.x = -Math.PI / 2; inst.lane.position.set(0, 0.012, 0.25); inst.lane.updateMatrix(); inst.lane.matrixAutoUpdate = false; inst.root.add(inst.lane);
   // Parallax layers: one mesh per material holding two periods of the strip, so it wraps seamlessly by jumping back one period.
   // Far scenery never casts a shadow that reaches the lane (the sun sits on the camera side), so it stays out of the shadow pass.
   def.parallax.forEach((L, i) => {
@@ -70,7 +72,7 @@ export function* buildBiome(def, shared) {
   yield;
   for (const A of def.particles.ambient) { const a = makeAmbient(A, shared); inst.ambient.push(a); inst.root.add(a.pts); }
   inst.root.traverse(o => { if (o.material) for (const m of [].concat(o.material)) injectHC(m, 'scenery'); }); // High-Contrast Mode hook (scenery fades)
-  return inst;
+  NOISE_LISTS[def.id] = endRecording(); return inst;
 }
 
 export function buildBiomeSync(def, shared) { const g = buildBiome(def, shared); let r; do r = g.next(); while (!r.done); return r.value; }

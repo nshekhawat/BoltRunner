@@ -1,14 +1,16 @@
 // Runs the deterministic benchmark (?bench=1) headless on the real GPU for every tier and writes a JSON report.
-// usage: node perf/bench.mjs [--out=perf/current.json] [--tiers=high,medium,low] [--biomes=desert,city,jungle,frostpeak,journey] [--secs=60] [--label=text]
+// usage: node perf/bench.mjs [--out=perf/current.json] [--tiers=high,medium,low] [--biomes=desert,city,jungle,frostpeak,journey] [--secs=60] [--label=text] [--vsync]
+// Default: vsync off (frame time = throughput; a fast GPU queues frames unboundedly, so isolated 100+ ms gaps there are queue flushes, not stutter).
+// --vsync: real presentation timing; this is the mode for judging stutter (p99, max, Journey frameMax).
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 const args = process.argv.slice(2), opt = (k, d) => args.find(a => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d;
 const tiers = opt('tiers', 'high,medium,low').split(','), secs = +opt('secs', 60), biomes = opt('biomes', ''), out = opt('out', 'perf/current.json');
-const report = { date: new Date().toISOString(), label: opt('label', ''), commit: spawnSync('git', ['rev-parse', '--short', 'HEAD']).stdout.toString().trim(), secs, tiers: {} };
+const report = { date: new Date().toISOString(), label: opt('label', ''), vsync: args.includes('--vsync'), commit: spawnSync('git', ['rev-parse', '--short', 'HEAD']).stdout.toString().trim(), secs, tiers: {} };
 for (const tier of tiers) {
   const q = `bench=1&q=${tier}&secs=${secs}${biomes ? '&biomes=' + biomes : ''}`;
   process.stderr.write(`▶ ${tier} (${q})\n`);
-  const r = spawnSync('node', ['check.mjs', '1', q, '--gpu', '--uncapped', '--eval=bolt.bench.done'], { encoding: 'utf8', maxBuffer: 1 << 26, timeout: (secs * 5 + 90) * 1000 });
+  const r = spawnSync('node', ['check.mjs', '1', q, '--gpu', ...(args.includes('--vsync') ? [] : ['--uncapped']), '--eval=bolt.bench.done'], { encoding: 'utf8', maxBuffer: 1 << 26, timeout: (secs * 5 + 90) * 1000 });
   const line = r.stdout.split('\n').find(l => l.startsWith('[eval] '));
   if (!line) { console.error(r.stdout, r.stderr); process.exit(1); }
   report.tiers[tier] = JSON.parse(line.slice(7));

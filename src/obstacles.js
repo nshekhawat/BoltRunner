@@ -91,7 +91,8 @@ export class Obstacles {
     if (d.fly !== undefined) { mesh.position.y = -(box.min.y + box.max.y) / 2 * sy; body.position.y = d.fly; } else mesh.position.y = -box.min.y * sy;
     const key = `${inst.def.id}.${d.arch}`;
     if (!(key in this.fit)) { this.fit[key] = { sx: +sx.toFixed(2), sy: +sy.toFixed(2) }; if (Math.abs(sx - 1) > 0.15 || Math.abs(sy - 1) > 0.15) console.warn(`Obstacle mesh ${key} needs ${Math.round(Math.max(Math.abs(sx - 1), Math.abs(sy - 1)) * 100)}% scaling to fit its archetype box (${d.width}×${d.height})`); }
-    mergeStatic(mesh, this.outlineMat); addOutline(mesh, this.outlineMat); // static parts + their outline collapse to one mesh per material; named animated parts keep their own outline clone
+    mergeStatic(mesh, this.outlineMat); addOutline(mesh, this.outlineMat);
+    mesh.updateMatrix(); mesh.matrixAutoUpdate = false; mesh.traverse(o => { if (o !== mesh && !o.name && !o.parent?.name) { o.updateMatrix(); o.matrixAutoUpdate = false; } }); // only the group (x) and named animated parts move // static parts + their outline collapse to one mesh per material; named animated parts keep their own outline clone
     g.userData = { type, def: d, t: 0, passed: false, hit: false, phase: 0, dbg: [], x: C.SPAWN_X, px: C.SPAWN_X, anim: animParts(mesh), dbgOn: false };
     for (const b of d.boxes) { const m = new THREE.Mesh(new THREE.BoxGeometry(b[2], b[3], 1), this.dbgMat); m.position.set(b[0], b[1], 0); m.visible = false; g.add(m); g.userData.dbg.push(m); }
     return g;

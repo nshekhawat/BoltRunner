@@ -15,31 +15,10 @@ function hcObstacle(shader) { shader.uniforms.uDesat = HC.zero; shader.uniforms.
 HC.zero = { value: 0 };
 export function injectHC(material, kind = 'scenery') { if (material.isShaderMaterial || material.userData.hc) return material; material.userData.hc = kind; material.onBeforeCompile = kind === 'obstacle' ? hcObstacle : hcScenery; material.needsUpdate = true; return material; }
 
-// ---- Noise ----------------------------------------------------------------
-// Deterministic hash → value noise → fBm. Returns Float32Array heights in [0,1].
-const hash = (x, y, seed) => { let h = (x * 374761393 + y * 668265263 + seed * 1442695041) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-export const smooth = t => t * t * (3 - 2 * t);
-// Tileable fBm: sample on a torus by wrapping integer lattice coords modulo `scale`.
-export function fbm(x, y, { scale = 8, octaves = 4, seed = 1, stretchY = 1 } = {}) {
-  let amp = 0.5, sum = 0, norm = 0, freq = scale;
-  for (let o = 0; o < octaves; o++) {
-    const px = x * freq, py = y * freq * stretchY;
-    const wx = ((px % freq) + freq) % freq, wy = (((py % (freq * stretchY)) + freq * stretchY) % (freq * stretchY));
-    sum += amp * valueNoiseWrapped(wx, wy, freq, freq * stretchY, seed + o * 7); norm += amp; amp *= 0.5; freq *= 2;
-  }
-  return sum / norm;
-}
-function valueNoiseWrapped(x, y, wx, wy, seed) {
-  const xi = Math.floor(x), yi = Math.floor(y), fx = smooth(x - xi), fy = smooth(y - yi);
-  const X = (xi + 1) % wx, Y = (yi + 1) % wy;
-  const a = hash(xi, yi, seed), b = hash(X, yi, seed), c = hash(xi, Y, seed), d = hash(X, Y, seed);
-  return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
-}
-export function makeNoiseTexture(size, opts = {}) {
-  const h = new Float32Array(size * size);
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) h[y * size + x] = fbm(x / size, y / size, opts);
-  return h;
-}
+// ---- Noise (see noise.js: pure, cached, Worker-prefetched) ----------------
+import { fbm, smooth, getNoise } from './noise.js';
+export { fbm, smooth };
+export const makeNoiseTexture = (size, opts = {}) => getNoise(size, opts);
 
 // Generic canvas → texture. fn(x, y, u, v) returns [r,g,b] in 0..255 (or [r,g,b,a]).
 export function canvasTexture(size, fn, { srgb = true, repeat = 1, clamp = false } = {}) {

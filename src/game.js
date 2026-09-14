@@ -22,7 +22,7 @@ export class Game {
     this.state = 'MENU'; this.prevState = 'MENU'; this.stateTime = 0; this.timeScale = 1; this.slowT = 0; this.tutorialDone = false; this.inPress = false; this.inRelease = false; this.renderY = 0;
     this.stickersBefore = earned(store.lifetime, store.records).map(x => x.id);
     this.select = null; this.runKey = 'desert'; this.settings = null; this.startSpeed = C.SPEED_START; this.sessionLimit = 0; this.sessionT = 0; // select carousel (set by main); records key for the current run ('journey' in Journey mode)
-    this.robotState = { mode: 'idle', y: 0, vy: 0, speed: 0, ducking: false, hitFlash: 0, airtime: 0, grounded: true }; // reused every frame (no allocation)
+    this.robotState = { mode: 'idle', y: 0, vy: 0, speed: 0, ducking: false, hitFlash: 0, airtime: 0, grounded: true }; this.ghostState = { mode: 'run', y: 0, vy: 0, speed: 0, ducking: false, hitFlash: 0, airtime: 0.2, grounded: true }; // reused every frame (no allocation)
     this.resetRun();
     this.bindInput();
     this.bindMenu();
@@ -123,7 +123,7 @@ export class Game {
       if (ev.passed) { this.combo += ev.passed; this.cleared += ev.passed; this.maxCombo = Math.max(this.maxCombo, this.combo); hud.combo(this.combo); for (const t of ev.passedTypes) this.clearedBy[t] = (this.clearedBy[t] ?? 0) + 1; }
       if (ev.power) this.activatePower(ev.power);
       if (ev.hiss) this.emit('hiss'); if (ev.erupt) this.emit('erupt');
-      if (ev.beam) { this.emit('beam'); if (!this.tutorialDone) { this.tutorialDone = true; this.slowT = 1.0; this.timeScale = 0.6; hud.message('💙 HEALTH', 1.4, true); this.emit('tutorial'); } } // first-seen beat, once per session
+      if (ev.beam) { this.needBg = true; this.emit('beam'); if (!this.tutorialDone) { this.tutorialDone = true; this.slowT = 1.0; this.timeScale = 0.6; hud.message('💙 HEALTH', 1.4, true); this.emit('tutorial'); } } // first-seen beat, once per session
       if (ev.pickup) { this.shields = Math.min(C.SHIELDS_MAX, this.shields + 1); hud.shields(this.shields, C.SHIELDS_MAX); this.emit('pickup'); }
       if (ev.hit && this.bubble) { this.bubble = false; this.endPower(); this.invuln = C.INVULN_TIME; this.emit('bubblePop'); ev.hit = null; } // Shield Bubble absorbs one hit
       if (ev.hit) {
@@ -139,7 +139,7 @@ export class Game {
   frame(dt, alpha) {
     hud.update(dt); const p = this.player;
     this.renderY = p.prevY + (p.y - p.prevY) * alpha;
-    if (this.state === 'PLAYING') { hud.score(this.score); hud.timer(this.time); }
+    if (this.state === 'PLAYING') { hud.score(this.score); hud.timer(this.time); if (this.power) { const f = Math.max(0, this.power.t / this.power.dur); if (Math.abs(f - this.powerShown) > 0.004) { this.powerShown = f; hud.power(this.power.kind, f); } } }
     if (C.DEBUG_HITBOXES || this.dbgBoxes[0].visible) { const boxes = this.robot.boxes(this.renderY, false, C.HITBOX_SCALE[this.mode]); for (let i = 0; i < 3; i++) { const m = this.dbgBoxes[i]; m.visible = C.DEBUG_HITBOXES && this.state === 'PLAYING'; if (m.visible) { m.position.set(boxes[i].cx, boxes[i].cy, 0); m.scale.set(boxes[i].w, boxes[i].h, 1); } } }
     if (this.state === 'SELECT') this.select?.update(dt);
     this.updateGhost(dt);
@@ -150,19 +150,19 @@ export class Game {
   }
   // ---- Power-ups: 5–8 s each, on-screen timer ring, never two at once ----
   activatePower(kind) {
-    this.endPower(); this.power = { kind, t: C.POWER_TIME[kind], dur: C.POWER_TIME[kind] }; this.powersGot++;
+    this.endPower(); this.power = { kind, t: C.POWER_TIME[kind], dur: C.POWER_TIME[kind] }; this.powersGot++; this.powerShown = -1;
     if (kind === 'shield') this.bubble = true; else if (kind === 'slowmo') this.timeScale = 0.6; else if (kind === 'rocket') this.rocket = true;
     hud.message({ shield: '🛡️ SHIELD', slowmo: '⏳ SLOW-MO', rocket: '🚀 ROCKET!' }[kind], 1.2, true, true); this.emit('power', kind);
   }
   endPower() { if (!this.power) return; const k = this.power.kind; this.power = null; if (k === 'shield') this.bubble = false; if (k === 'slowmo' && this.slowT <= 0) this.timeScale = 1; if (k === 'rocket') { this.rocket = false; this.player.vy = 0; } hud.power(null); }
-  updatePower(dt) { if (!this.power) return; this.power.t -= dt / this.timeScale; hud.power(this.power.kind, Math.max(0, this.power.t / this.power.dur)); if (this.power.t <= 0) this.endPower(); }
+  updatePower(dt) { if (!this.power) return; this.power.t -= dt / this.timeScale; if (this.power.t <= 0) this.endPower(); }
   // ---- Ghost: record y at 10 Hz (quantised to 1/20 u); replay the saved best run beside the robot ----
   record(dt) { this.recT += dt; if (this.recT >= 0.1 && this.rec.length < 6000) { this.recT -= 0.1; this.rec.push(Math.min(127, Math.round(this.player.y * 20))); } }
   updateGhost(dt) {
     const d = this.ghostData, g = this.ghost, show = !!(this.ghostOn && d && d.length > 1 && this.state === 'PLAYING');
     g.group.visible = show; if (!show) return;
     const i = Math.min(d.length - 2, Math.floor(this.time * 10)), f = Math.min(1, this.time * 10 - i), y = THREE.MathUtils.lerp(d[i], d[i + 1], f) / 20;
-    g.update(dt, { mode: y > 0.05 ? 'jump' : 'run', y, vy: (d[i + 1] - d[i]) / 2, speed: this.speed, ducking: false, hitFlash: 0, airtime: 0.2, grounded: y <= 0.05 });
+    const G = this.ghostState; G.mode = y > 0.05 ? 'jump' : 'run'; G.y = y; G.vy = (d[i + 1] - d[i]) / 2; G.speed = this.speed; G.grounded = y <= 0.05; g.update(dt, G);
   }
   stats() {
     const r = (store.records[this.runKey] ??= { best: 0, bestTime: 0, cleared: 0, combo: 0 });

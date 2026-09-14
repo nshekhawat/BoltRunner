@@ -99,15 +99,15 @@ export class Robot {
       const rate = 2.2 + s.speed * 0.08; this.phase += dt * rate * Math.PI * 2;
       const sn = Math.sin(this.phase), cs = Math.cos(this.phase);
       if ((this.prevSin > 0) !== (sn > 0)) step = true; this.prevSin = sn;
-      this.legs.forEach((hip, i) => { const k = i ? -1 : 1; hip.rotation.x = sn * k * 0.85; hip.userData.knee.rotation.x = Math.max(0, cs * k) * 1.3 + 0.15; });
-      this.arms.forEach((sh, i) => { const k = i ? 1 : -1; sh.rotation.x = sn * k * 0.7; sh.rotation.z = 0; sh.userData.elbow.rotation.x = -0.9; });
+      for (let i = 0; i < 2; i++) { const hip = this.legs[i], k = i ? -1 : 1; hip.rotation.x = sn * k * 0.85; hip.userData.knee.rotation.x = Math.max(0, cs * k) * 1.3 + 0.15; }
+      for (let i = 0; i < 2; i++) { const sh = this.arms[i], k = i ? 1 : -1; sh.rotation.x = sn * k * 0.7; sh.rotation.z = 0; sh.userData.elbow.rotation.x = -0.9; }
       bob = Math.abs(cs) * 0.07; lean = 0.1 + 0.28 * norm;
       this.antenna.rotation.x = -(0.3 + 0.2 * norm + sn * 0.08);
       if (s.mode === 'duck') { sy = 0.55; sx = 1.15; lean += 0.25; }
     } else if (s.mode === 'jump') {
       const tuck = Math.min(1, s.airtime * 8);
-      this.legs.forEach((hip, i) => { hip.rotation.x = THREE.MathUtils.lerp(hip.rotation.x, -0.9 - i * 0.2, tuck * 0.3); hip.userData.knee.rotation.x = THREE.MathUtils.lerp(hip.userData.knee.rotation.x, 1.5, tuck * 0.3); });
-      this.arms.forEach((sh, i) => { const k = i ? 1 : -1; sh.rotation.x = THREE.MathUtils.lerp(sh.rotation.x, -0.4, 0.2); sh.rotation.z = THREE.MathUtils.lerp(sh.rotation.z, k * 1.4, 0.2); sh.userData.elbow.rotation.x = -0.3; });
+      for (let i = 0; i < 2; i++) { const hip = this.legs[i]; hip.rotation.x = THREE.MathUtils.lerp(hip.rotation.x, -0.9 - i * 0.2, tuck * 0.3); hip.userData.knee.rotation.x = THREE.MathUtils.lerp(hip.userData.knee.rotation.x, 1.5, tuck * 0.3); }
+      for (let i = 0; i < 2; i++) { const sh = this.arms[i], k = i ? 1 : -1; sh.rotation.x = THREE.MathUtils.lerp(sh.rotation.x, -0.4, 0.2); sh.rotation.z = THREE.MathUtils.lerp(sh.rotation.z, k * 1.4, 0.2); sh.userData.elbow.rotation.x = -0.3; }
       lean = 0.12 + Math.max(-0.25, Math.min(0.35, s.vy * 0.015)); this.antenna.rotation.x = -(0.6 + Math.max(-0.3, s.vy * 0.03));
     } else if (s.mode === 'stumble') {
       lean = THREE.MathUtils.lerp(rig.rotation.x, 1.35, dt * 4); sy = THREE.MathUtils.lerp(rig.scale.y, 0.9, dt * 3);
@@ -129,7 +129,7 @@ export class Robot {
     if (this.topper) { if (this.topper.userData.spin) this.topper.rotation.y += dt * (6 + s.speed * 0.8); if (this.topper.userData.flame) this.topper.scale.y = 0.8 + 0.4 * Math.abs(Math.sin(this.time * 23)); }
     // Blink (also while running: robots blink too)
     this.blink -= dt; if (this.blink <= 0) { this.blinkT = 0.14; this.blink = 2.5 + Math.random() * 3; }
-    this.blinkT = Math.max(0, this.blinkT - dt); const eyeS = this.blinkT > 0 ? 0.15 : 1; this.eyes.forEach(e => e.scale.z = eyeS);
+    this.blinkT = Math.max(0, this.blinkT - dt); const eyeS = this.blinkT > 0 ? 0.15 : 1; this.eyes[0].scale.z = eyeS; this.eyes[1].scale.z = eyeS;
     // Hit flash: red-orange emissive strobe
     const flashing = s.hitFlash > 0 && Math.floor(s.hitFlash * 24) % 2 === 0;
     const M = this.torso.children[0].material; M.emissive.setHex(flashing ? 0xff5a1a : 0x000000); M.emissiveIntensity = flashing ? 1.2 : 0;
@@ -139,7 +139,7 @@ export class Robot {
 
   updateTrail(dt, s) {
     const pts = this.trailPts, moving = s.speed > 0.5;
-    for (const p of pts) p.x -= s.speed * dt;
+    for (let i = 0; i < TRAIL_N; i++) pts[i].x -= s.speed * dt;
     // Push the current back-foot position at the head of the ribbon.
     const foot = this.legs[0].userData.foot; foot.getWorldPosition(this._tmp);
     const head = pts.pop(); head.x = this._tmp.x; head.y = Math.max(0.05, this._tmp.y); pts.unshift(head); // recycle, no allocation
@@ -148,7 +148,7 @@ export class Robot {
     for (let i = 0; i < TRAIL_N; i++) {
       const a = (1 - i / TRAIL_N) ** 2 * on * 0.55, w = 0.03 + 0.07 * (i / TRAIL_N), p = pts[i], o = i * 6, c = i * 8;
       this.trailPos[o] = p.x; this.trailPos[o + 1] = p.y + w; this.trailPos[o + 2] = 0; this.trailPos[o + 3] = p.x; this.trailPos[o + 4] = Math.max(0.02, p.y - w); this.trailPos[o + 5] = 0;
-      for (const k of [0, 4]) { this.trailCol[c + k] = col.r; this.trailCol[c + k + 1] = col.g; this.trailCol[c + k + 2] = col.b; this.trailCol[c + k + 3] = a; }
+      const T = this.trailCol; T[c] = col.r; T[c + 1] = col.g; T[c + 2] = col.b; T[c + 3] = a; T[c + 4] = col.r; T[c + 5] = col.g; T[c + 6] = col.b; T[c + 7] = a;
     }
     this.trail.geometry.attributes.position.needsUpdate = true; this.trail.geometry.attributes.color.needsUpdate = true;
   }

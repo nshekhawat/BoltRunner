@@ -1,5 +1,5 @@
 // Headless smoke test via Chrome DevTools Protocol. No deps (Node ≥22 has fetch + WebSocket).
-// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu] [--uncapped] [--heap]
+// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu] [--uncapped] [--heap] [--cpuprofile]
 import { spawn, execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
@@ -62,8 +62,11 @@ if (args.includes('--touch')) {
   await probe('mid swipe (finger down)'); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(200); await probe('after release');
 }
 if (opt('js')) await send('Runtime.evaluate', { expression: opt('js') });
+if (args.includes('--cpuprofile')) { await send('Profiler.enable'); await send('Profiler.setSamplingInterval', { interval: 200 }); await send('Profiler.start'); } // --cpuprofile: self time by function over the rest of the run
 await sleep(secs * 3000 / 4);
 if (opt('eval')) { const r = await send('Runtime.evaluate', { expression: opt('eval'), returnByValue: true, awaitPromise: true }); lines.push(`[eval] ${r?.exceptionDetails ? 'EXCEPTION ' + r.exceptionDetails.exception?.description : JSON.stringify(r?.result?.value)}`); }
+if (args.includes('--cpuprofile')) { const { profile } = await send('Profiler.stop'); const by = new Map(); let total = 0; for (const n of profile.nodes) { const k = `${n.callFrame.functionName || '(anon)'} ${n.callFrame.url.split('/').slice(-2).join('/')}:${n.callFrame.lineNumber + 1}`; by.set(k, (by.get(k) ?? 0) + n.hitCount); total += n.hitCount; }
+  lines.push(`[cpu] self time by function (% of ${total} samples):`); for (const [k, v] of [...by].sort((a, b) => b[1] - a[1]).slice(0, 22)) lines.push(`[cpu] ${(100 * v / total).toFixed(1).padStart(5)}%  ${k}`); }
 if (args.includes('--heap')) { await send('HeapProfiler.collectGarbage'); const { profile } = await send('HeapProfiler.stopSampling'); const by = new Map(); const walk = n => { const k = `${n.callFrame.functionName || '(anon)'} ${n.callFrame.url.split('/').slice(-2).join('/')}:${n.callFrame.lineNumber + 1}`; by.set(k, (by.get(k) ?? 0) + n.selfSize); n.children.forEach(walk); }; walk(profile.head);
   lines.push('[heap] live allocations by call site (KB):'); for (const [k, v] of [...by].sort((a, b) => b[1] - a[1]).slice(0, 18)) lines.push(`[heap] ${(v / 1024).toFixed(0).padStart(7)}  ${k}`); }
 if (opt('shot')) { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(opt('shot'), Buffer.from(r.data, 'base64')); }

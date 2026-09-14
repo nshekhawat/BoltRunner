@@ -78,8 +78,9 @@ export function summarise(r) {
   const f = r.frame, c = r.cpu, n = f.length; let gc = 0, gcMax = 0, gcOver5 = 0; const max = a => { let m = 0; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; };
   for (let i = 1; i < r.heap.length; i++) if (r.heap[i] < r.heap[i - 1] - 1e6) { gc++; gcMax = Math.max(gcMax, c[i]); if (c[i] > 5) gcOver5++; }
   const mean = a => a.reduce((x, y) => x + y, 0) / (a.length || 1);
+  const worst = []; let t = 0; for (let i = 0; i < n; i++) { t += f[i]; if (f[i] > 25) worst.push({ t: +(t / 1000).toFixed(2), ms: +f[i].toFixed(1), cpu: +c[i].toFixed(1) }); } worst.sort((a, b) => b.ms - a.ms);
   return {
-    frames: n, seconds: +(f.reduce((a, b) => a + b, 0) / 1000).toFixed(1), fps: +(1000 / mean(f)).toFixed(1), low1: +lowFps(f).toFixed(1),
+    worst: worst.slice(0, 6), frames: n, seconds: +(f.reduce((a, b) => a + b, 0) / 1000).toFixed(1), fps: +(1000 / mean(f)).toFixed(1), low1: +lowFps(f).toFixed(1),
     frame: { p50: +percentile(f, 50).toFixed(2), p95: +percentile(f, 95).toFixed(2), p99: +percentile(f, 99).toFixed(2), max: +max(f).toFixed(1), over25: f.filter(x => x > 25).length },
     cpu: { p50: +percentile(c, 50).toFixed(2), p95: +percentile(c, 95).toFixed(2), p99: +percentile(c, 99).toFixed(2), max: +max(c).toFixed(1) },
     gpu: r.gpu.some(x => x > 0) ? { p50: +percentile(r.gpu, 50).toFixed(2), p95: +percentile(r.gpu, 95).toFixed(2) } : null,

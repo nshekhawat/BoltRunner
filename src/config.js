@@ -80,7 +80,7 @@ export const CONFIG = {
 
   // ---- Performance ---------------------------------------------------------
   MAX_PIXEL_RATIO: 2, MOBILE_PIXEL_RATIO: 1.5, // caps; phones/tablets get the lower one (fill-rate is the bottleneck there)
-  FPS_DOWNGRADE_BELOW: 45, FPS_DOWNGRADE_AFTER: 3, // Auto-drop a quality tier if FPS < x for y seconds.
+  // Adaptive quality thresholds (dropped-frame ratio, cooldowns, render-scale steps) live in src/quality.js next to the policy.
   DEBUG_HITBOXES: false, // Render wireframe collision boxes.
 };
 

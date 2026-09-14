@@ -34,12 +34,17 @@ the network, once, from jsDelivr. Every texture, model and sound is generated in
 One-button play: on the select screen the highlight walks along by itself after a few
 quiet seconds, so a single button (or tap) can pick a world and play.
 
-Debug keys: `F` shows FPS, quality tier, `renderer.info.memory` counts and the current
-biome/phase; `H` toggles wireframe hitboxes; `D` cycles Kid / Normal / No-Fail on the
-title screen. URL parameters: `?q=low|medium|high` forces a quality tier,
-`?biome=city` starts in a world.
-`window.bolt` exposes `game`, `world`, `journey`, `switchBiome(id)` and
-`contrastTest()` in the console.
+Debug keys: `F` shows the frame-time panel (FPS, p50/p95 frame, CPU and GPU ms, render
+scale, rolling graph); `F3` the debug overlay (`renderer.info` draw calls, triangles,
+geometries, textures, programs, active obstacles, particles, pooled objects, ticks per
+frame, render scale, tier, and the quality controller's log); `H` toggles wireframe
+hitboxes; `D` cycles Kid / Normal / No-Fail on the title screen. URL parameters:
+`?q=low|medium|high` forces a quality tier, `?biome=city` starts in a world, `?bench=1`
+runs the benchmark (see Performance), `?latency=1` measures press-to-pixel latency,
+`?webgpu=1` renders with the WebGPU renderer (evaluation only, see
+`perf/webgpu-report.md`).
+`window.bolt` exposes `game`, `world`, `journey`, `perf`, `qc` (quality controller),
+`switchBiome(id)` and `contrastTest()` in the console.
 
 ## Worlds
 
@@ -64,9 +69,11 @@ desert transfers to the city.
 | `chaser` | 1.1 × 1.1, moves at speed × 1.15 | hop | 1000 |
 
 **Journey** switches world every 700 points. The next world (textures, materials, obstacle
-pools, compiled shaders) is built on idle callbacks during the previous segment; the robot
-then runs through an enclosed gateway of light and the swap happens while the view is
-enclosed (about 1 ms of scene operations). Each world keeps its own fixed lighting (its
+pools, compiled shaders) is built on idle callbacks during the previous segment — its noise
+fields come from a Worker first, so each idle step is a few milliseconds — then every new
+mesh is drawn once, hidden, into a 4×4 target so the swap frame compiles and uploads
+nothing; the robot then runs through an enclosed gateway of light and the swap happens
+while the view is enclosed (about 2 ms of scene operations). Each world keeps its own fixed lighting (its
 `startPhase` preset); the swap blends between them.
 Frame time is asserted during every transition (`console.assert` if a frame exceeds 20 ms;
 `bolt.journey.frameMax` and `.log` hold the numbers).
@@ -96,9 +103,10 @@ A constant recognition layer plus a decorative shell:
 Everything on the settings screen persists in `localStorage` under `boltrunner.v2`.
 
 - Gameplay: Kid / Normal / No-Fail practice (hits only cost points), starting speed.
-- Visual: quality tier, High-Contrast Mode (scenery desaturated 60 %, obstacles and pickup
-  saturated, scenery bloom off), colourblind palettes (deuteranopia / protanopia /
-  tritanopia), FPS, camera distance.
+- Visual: quality tier, Reduce motion (no screen shake or camera pulses), Dynamic
+  resolution (the render scale drops for a moment when frames are dropped), High-Contrast
+  Mode (scenery desaturated 60 %, obstacles and pickup saturated, scenery bloom off),
+  colourblind palettes (deuteranopia / protanopia / tritanopia), FPS, camera distance.
 - Audio: music and SFX sliders, master mute.
 - Controls: extra jump key, hold-to-jump sensitivity.
 - Parent: break reminder at 15 / 30 / 45 minutes (pauses with a gentle card, never locks),
@@ -182,21 +190,39 @@ Every number lives in `src/config.js`, each with a comment. The ones that matter
 | `GAP_FACTOR` | 1.4 | Minimum spacing = 1.4 × speed × airtime |
 | `DAY_CYCLE_POINTS` | 700 | Lighting phase change, and Journey's world change |
 | `PICKUP_EVERY` / `POWER_EVERY` | 12 / 22 | Obstacles between pickups / power-ups |
+| `TICK_RATE` / `MAX_ACCUM` | 120 Hz / 250 ms | Fixed simulation step and the accumulator clamp |
+| `HITSTOP_MS`, `SQUASH_*`, `TRAUMA_*`, `SHAKE_MAX`, `ANTICIPATION_LEAD`, `FOV_PULLBACK`, `NEAR_MISS_*`, `PITCH_VARIATION` | see file | Game feel: every response is a number here, none is a vibe |
+| `CHUNK_RULES` (`src/chunks.js`) | | Difficulty band, easy-after-hit cap, repeat/skill caps, rest beat cadence |
 
-## How fairness is enforced
+## Level generation and how fairness is enforced
+
+Obstacles come from **authored chunks**, not per-obstacle randomness. `src/chunks.js` holds 30
+short patterns (archetype + gap pairs, gaps in units of the minimum clearable spacing so they
+are valid at every speed), each tagged with a difficulty 1–10 and a skill (`jump`, `timing`,
+`rhythm`). Because hitboxes and physics are identical in every world, one library serves all
+four; a world weights the skills (`chunkWeights` in its definition).
+
+The `Spawner` in `src/spawn.js` draws from a weighted bag inside a difficulty band that
+widens with score (`band = 1 + score / 110`), only from chunks whose archetypes are unlocked.
+Rules: the same chunk never repeats within the last two; a skill tag never runs more than
+twice; **after every hit the next chunk has difficulty ≤ 2**; a health pickup arrives on its
+fixed cadence whenever a shield is missing; a rest beat (an empty 1.5–2 s) lands every
+~20 s. `checkChunks()` expands every chunk at every speed cap through the pattern validator at
+load time and the game refuses to start if any fails.
 
 `src/spawn.js` is pure JavaScript with no Three.js so it can be unit-tested:
 
 - `canSpawn` works in the *time* domain, so a chaser that moves faster than the scroll can
-  never close the gap behind a static obstacle.
-- `checkClearable` verifies every archetype's hitbox against the hop apex, full-jump apex
-  or duck height for its declared action.
+  never close the gap behind a static obstacle. It remains the safety net under the chunks.
+- `checkClearable` verifies every archetype's hitbox against the hop apex or full-jump apex
+  for its declared action.
 - `leadTime` is asserted at startup for every archetype at every speed cap.
-- The `Spawner` class is the real runtime spawner; the tests drive it for 10,000 sequences
-  per world per difficulty and validate every arrival pattern.
+- The tests drive the real `Spawner` for 10,000 sequences per world per difficulty, validate
+  every arrival pattern, and check chunk coverage (every chunk of the band is reached, rest
+  beats occur, the easy-after-hit and repeat rules hold).
 
 ```sh
-node --test test/      # 29 tests: physics, spacing maths, schema, 4 worlds × 3 difficulties × 10,000 sequences
+node --test test/      # 34 tests: physics + fixed tick, spacing maths, chunks, schema, 4 worlds × 3 difficulties × 10,000 sequences
 node check.mjs         # headless Chrome smoke test (console errors, 404s, screenshots)
 ```
 
@@ -204,7 +230,9 @@ node check.mjs         # headless Chrome smoke test (console errors, 404s, scree
 `--js="…"` (runs after the keys), `--eval="…"` (result printed, promises awaited),
 `--shot=out.png`, `--size=W,H`, `--mobile` (Galaxy S24 Ultra viewport + touch),
 `--touch` (drives a whole run by touch), `--gpu` (real GPU instead of SwiftShader, for
-frame-time checks). Example verification commands:
+frame-time checks), `--uncapped` (vsync off), `--heap` (live allocations by call site at the
+end: the leak hunter), `--cpuprofile` (self time by function), `--webgpu`. It always uses
+ports 8765 and 9333, so run one at a time. Example verification commands:
 
 ```sh
 node check.mjs 6 "q=low" --keys=Space --eval="JSON.stringify(bolt.contrastTest().pass)"
@@ -214,13 +242,21 @@ node check.mjs 10 --gpu --keys=Space --js="for(let i=0;i<10;i++)bolt.switchBiome
 ## Files
 
 ```
-index.html          import map, canvas, HUD, overlays (title, select, settings, robot, stickers, pause, photo, end)
-style.css           HUD and card styles
-src/config.js       every tunable constant
-src/main.js         renderer, post-processing, camera, quality tiers, biome loading, journey hooks, settings hooks, loop
-src/game.js         state machine, input, scoring, shields, power-ups, ghost, jump assist, records
-src/physics.js      player jump/duck controller (pure, tested)
-src/spawn.js        archetype table, gap maths, pattern validator, Spawner (pure, tested)
+index.html          import map, canvas, CSS vignette, HUD, overlays (title, select, settings, robot, stickers, pause, photo, end)
+style.css           HUD and card styles, perf panels
+src/config.js       every tunable constant (physics, tick rate, difficulty, camera, game feel, performance)
+src/main.js         renderer (WebGL / WebGPU eval), post chain, camera, tier appliers, warm-up, biome loading, journey hooks, settings hooks, the loop
+src/quality.js      adaptive quality controller: tier + dynamic render scale policy
+src/perf.js         frame/CPU/GPU ring buffers, percentiles, F panel, F3 overlay, latency probe, benchmark recording
+src/bench.js        deterministic benchmark mode (?bench=1): autopilot, per-biome report
+src/seed.js         seeded Math.random for benchmark determinism (imported first)
+src/game.js         state machine, latched input, fixed tick / frame split, scoring, shields, power-ups, ghost, records
+src/physics.js      player jump controller (pure, tested)
+src/spawn.js        archetype table, gap maths, pattern validator, chunk Spawner, checkChunks (pure, tested)
+src/chunks.js       the 30 authored level chunks and the generator rules
+src/merge.js        mergeStatic / doubleAlongX: static geometry → one mesh per material (+ merged outline)
+src/noise.js        tileable fBm, noise cache, Worker prefetch (learned per-biome field lists)
+src/noise-worker.js module Worker computing noise fields off the main thread
 src/obstacles.js    pooled obstacle meshes fitted to archetypes, collision, health pickup recognition layer, power orb
 src/journey.js      Journey scheduling, gateway of light, frame-time assertion
 src/select.js       world carousel
@@ -241,12 +277,132 @@ test/               node:test unit tests
 check.mjs           headless Chrome harness
 ```
 
-## Quality tiers and performance
+## Performance
 
-High (1024 px shadows, bloom, all particles), Medium (512 px shadows, no bloom), Low (no
-shadows, no post-processing, fewer particles). High and Medium render through a 4× MSAA
-target (one resolve instead of a three-pass SMAA); Low uses the browser's MSAA directly.
-Pixel ratio is capped at 2 on desktops and 1.5 on touch devices. The robot casts no
-shadow. Materials are precompiled under the active render target before Journey swaps. Auto picks a tier from the GPU string and a one-second
-FPS probe, and drops a tier if FPS stays under 45 for 3 seconds. The settings screen or the
-title-screen button overrides it.
+### Budgets (per frame, Medium tier, integrated graphics)
+
+| Metric | Budget |
+|---|---|
+| frame time | p95 under 16.6 ms, p99 under 25 ms, 1 % low above 50 FPS |
+| JS main thread | under 6 ms |
+| draw calls | under 100 (every biome, shadow pass included) |
+| GC pauses over 5 ms | zero during a 60 s run |
+| heap / `renderer.info.memory` | flat between 0 s and 60 s; flat across ten biome switches |
+| press-to-pixel latency | under 2 frames, measured (`?latency=1`) |
+| Journey transition | never over 20 ms per frame |
+
+### How the frame works
+
+- **Fixed 120 Hz simulation** (`TICK_RATE`) on an accumulator clamped to 250 ms: physics,
+  collision, spawning and scoring run in `Game.tick`; the render transform interpolates
+  between the previous and current tick (`Game.frame`, `Obstacles.render`, the Journey gate),
+  so the jump arc is bit-identical on every machine and motion is smooth at 144 Hz and at
+  45 FPS. Input is polled per tick with latched press/release edges, so a tap between two
+  ticks is never swallowed and never fires twice. Coyote time and the input buffer are now
+  measured in ticks (15 and 18 at 120 Hz). Slow-mo scales the time fed to the accumulator;
+  hit-stop starves it for 70 ms.
+- **Zero allocation in the loop**: scratch vectors and state objects are module-level, the
+  HUD only touches a DOM node when its value changes, robot/ghost/trail/world updates are
+  plain loops, obstacle part animation uses lists cached at build time (no `traverse`).
+- **Draw calls**: everything static is merged per material (`mergeStatic`): each obstacle
+  and pickup shell is one mesh per material plus one merged back-face outline; each parallax
+  layer holds two periods in one mesh; each prop type is one scrolling band; clouds are one
+  `InstancedMesh`; far scenery casts no shadow; light shafts are hidden when off; the sky is
+  drawn after every other opaque object.
+- **Programs are warmed** at biome apply and at every tier change: every pooled mesh is drawn
+  once, hidden, into a 4×4 target (or a 4×4 scissor on the direct path). This removed the
+  150–280 ms stalls on the first obstacle of each new type. Journey prepares the next biome
+  with `compileAsync` first, then the same warm-up in an idle slot.
+- **Textures**: noise fields (the expensive part of every procedural texture) are computed in
+  a module Worker; each biome's field list is learned on its first build and persisted, so
+  later builds (Journey, select screen) prefetch them and every idle step is a few ms.
+- **Fill rate**: only High uses a render-target chain (4× MSAA target → bloom → output);
+  Medium and Low draw straight to the canvas with browser MSAA and a CSS vignette. Shadows:
+  one directional light, 1024 / 512 px maps, off on Low; the robot has a blob shadow on every
+  tier. `shadowMap.autoUpdate` stays on because the whole world scrolls every frame — a
+  frozen shadow map would be visibly wrong within one frame. Additive, depth-write-off
+  particles; the pickup's background readback (a pipeline flush) happens once per pickup
+  telegraph and once per biome change, never on a timer.
+- **Adaptive quality** (`src/quality.js`): one controller owns tier (shadows, post chain,
+  particle budget, parallax layer count, pixel-ratio cap) and dynamic render scale
+  (1 → 0.85 → 0.7). If p95 exceeds 1.5× the display frame for 2 s it lowers the render scale
+  when GPU-bound or steps the tier when CPU-bound; after 5 s clean it raises the scale. Tiers
+  never change more than once per 5 s, never during a Journey transition, never when the user
+  picked a tier; every change is logged to the F3 overlay with its reason.
+- **Audio**: one lookahead scheduler (25 ms interval, 120 ms ahead on the `AudioContext`
+  clock); AudioParam automation for the mood filter runs at 10 Hz, not per frame.
+
+### Running the benchmark
+
+```sh
+node perf/bench.mjs                       # all tiers, 4 biomes × 60 s + Journey 90 s, vsync off → perf/current.json
+node perf/bench.mjs --vsync               # real presentation timing: the mode for judging stutter (p99, max, Journey)
+node perf/bench.mjs --tiers=medium --secs=20 --biomes=city,jungle --out=/tmp/x.json
+node perf/bench.mjs --webgpu --tiers=medium --secs=20
+node check.mjs 60 "bench=1&q=low&secs=300&biomes=city" --gpu --uncapped --heap       # leak hunt
+node check.mjs 30 "bench=1&q=medium&secs=300&biomes=jungle" --gpu --uncapped --cpuprofile
+```
+
+`?bench=1` seeds `Math.random`, drives the robot with an autopilot (full jump half an airtime
+before the nearest obstacle), plays No-Fail so the workload is identical every run, records
+every frame for exactly 60 s of PLAYING per biome (Journey 90 s), and reports percentiles:
+p50/p95/p99/max frame time, 1 % low FPS, CPU p50/p95/p99, GPU p50/p95 (timer query), draw
+calls, triangles, heap at 0 s and 60 s after a forced GC, GC events (heap drops) and how
+many coincided with a frame over 5 ms, `renderer.info.memory` at start and end, Journey
+transition count and worst frame. Two modes matter:
+
+- **vsync off** (default): frame time = throughput. A fast GPU queues frames without bound,
+  so isolated 100+ ms gaps with ~1 ms of CPU are queue flushes, not stutter, and GL calls
+  absorb GPU back-pressure (CPU numbers inflate when the GPU is the bottleneck).
+- **`--vsync`**: real presentation. On a 60 Hz headless display every clean frame reads
+  16.7 ms, so p50/p95 pin there and only spikes, max and 1 % low carry information.
+
+### Results
+
+Apple M3, Chrome headless with the real GPU, 1280×720. `perf/baseline.json` is v2.1
+(vsync off, 60 s); `perf/current.json` is the finished pass. Medium tier, per milestone
+(20 s runs for the intermediate rows, vsync off):
+
+| Milestone | draw calls (desert / city / jungle / frost) | CPU p95 ms | GPU p50 ms | worst frame ms | 1 % low FPS |
+|---|---|---|---|---|---|
+| v2.1 baseline (60 s) | 172 / 210 / 445 / 477 | 4.8 / 5.4 / 6.6 / 6.8 | 3.1 / 3.4 / 3.6 / 3.4 | 161 / 90 / 70 / 58 | 46 / 48 / 44 / 47 |
+| M3 fixed timestep | — | 3.2 / — / 4.3 / — | | | 65 / — / 85 / — |
+| M4 draw-call collapse | 66 / 92 / 81 / 70 | 3.1 / 3.1 / 3.2 / 3.8 | 2.8 / 2.8 / 2.6 / 3.1 | 222 / 153 / 188 / 216 | 33 / 41 / 31 / 25 |
+| M5 warm-up, worker noise, hygiene | 65 / 92 / 82 / 69 | 3.0 / 3.1 / 3.6 / — | | 6.8 / 7.7 / 14 / — | 173 / 172 / 158 / — |
+| M6–M9 fill rate, controller, juice, chunks | 62 / 92 / 81 / 68 | 2.6 / 2.6 / 2.7 / 2.5 | 1.6 / 1.6 / 1.1 / 1.2 | 114 / 86 / 83 / 98 | 140 / 189 / 203 / 230 |
+
+(The M4 worst frames are the first-draw shader stalls that M5 removed; the M6–M9 worst
+frames are uncapped queue flushes — with vsync the same runs have no frame over 16.8 ms.)
+Journey with vsync: 90 s, two transitions, worst frame 16.8 ms, swap 2.2 ms (v2.1: frames
+of 66–116 ms during transitions). Press-to-pixel: 1 frame (`?latency=1`, keydown to render
+submit 4–20 ms at 60 Hz). Heap: the sampling profiler finds no per-frame retention in game
+code; the remaining slow growth (~0.1 MB/s, flattening) is V8 code/feedback space attributed
+to three.js internals. `renderer.info.memory` returns to identical numbers every cycle of
+four biome switches (it drifted before: three's shared shadow depth material re-uploaded a
+disposed texture through a stale `map` uniform; a permanent shadow sentinel fixes it).
+
+### What from the standard checklist does not apply here
+
+This game generates every asset in code. Do not re-add:
+
+- **KTX2 / Basis, Draco / Meshopt** — there are no texture or model files to compress.
+- **Baked lightmaps** — no external tooling; lighting is three lights and a sky shader.
+- **`LOD` swapping** — geometry is primitives with a few thousand triangles per biome; the
+  cost was draw calls and fill rate, never vertex count (jungle draws 40k triangles at
+  1.1 ms of GPU time).
+- **A frozen shadow map** (`shadowMap.autoUpdate = false`) — the world scrolls every frame.
+- **A texture atlas / material family consolidation** — after merging, a biome renders in
+  60–90 draw calls with ~25 textures resident; texture binds are not on the profile.
+- **A vignette pass** — it is a CSS gradient (not in photo-mode PNGs, by design).
+
+Applied from that checklist: draw-call reduction, DPR cap (2 desktop, 1.5 touch, 1 on
+Low, times the dynamic render scale), shadow discipline, `matrixAutoUpdate = false` for
+static objects, object pooling, transparency/overdraw control, disposal.
+
+### Quality tiers
+
+High (1024 px shadows, bloom through a 4× MSAA target, all particles, all layers), Medium
+(512 px shadows, direct render with browser MSAA, no post), Low (no shadows, direct render,
+40 % particles, two parallax layers, pixel ratio 1). Auto picks a tier from the GPU string
+and a one-second FPS probe; the controller above adapts from there. The settings screen or
+the title-screen button overrides it.

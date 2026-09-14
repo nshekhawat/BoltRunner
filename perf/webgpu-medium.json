@@ -1,0 +1,363 @@
+{
+ "date": "2026-09-14T11:14:21.281Z",
+ "label": "WebGPU renderer, Medium, 20 s",
+ "vsync": false,
+ "commit": "3247997",
+ "secs": 20,
+ "tiers": {
+  "medium": {
+   "hardware": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+   "seed": 1,
+   "secs": 20,
+   "tier": "medium",
+   "dpr": 1,
+   "size": [
+    1280,
+    577
+   ],
+   "biomes": {
+    "desert": {
+     "worst": [
+      {
+       "t": 0.03,
+       "ms": 34,
+       "cpu": 0.5
+      }
+     ],
+     "frames": 38613,
+     "seconds": 20,
+     "fps": 1930.7,
+     "low1": 524.6,
+     "frame": {
+      "p50": 0.5,
+      "p95": 0.8,
+      "p99": 1.1,
+      "max": 34,
+      "over25": 1
+     },
+     "cpu": {
+      "p50": 0.4,
+      "p95": 0.5,
+      "p99": 0.6,
+      "max": 35.8
+     },
+     "gpu": {
+      "p50": 0.68,
+      "p95": 1.06
+     },
+     "calls": {
+      "p50": 80632,
+      "max": 138550
+     },
+     "triangles": 22699,
+     "heap": {
+      "startMB": 29.9,
+      "endMB": 37.2,
+      "gcEvents": 122,
+      "gcMaxFrameMs": 2.6,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "attributes": 546,
+       "attributesSize": 4177036,
+       "geometries": 243,
+       "indexAttributes": 78,
+       "indexAttributesSize": 156096,
+       "indirectStorageAttributes": 0,
+       "indirectStorageAttributesSize": 0,
+       "programs": 60,
+       "programsSize": 574772,
+       "readbackBuffers": 0,
+       "readbackBuffersSize": 0,
+       "renderTargets": 3,
+       "storageAttributes": 0,
+       "storageAttributesSize": 0,
+       "textures": 31,
+       "texturesSize": 26573304,
+       "uniformBuffers": 454,
+       "uniformBuffersSize": 90480,
+       "total": 31571688
+      },
+      "end": {
+       "attributes": 546,
+       "attributesSize": 4177036,
+       "geometries": 243,
+       "indexAttributes": 78,
+       "indexAttributesSize": 156096,
+       "indirectStorageAttributes": 0,
+       "indirectStorageAttributesSize": 0,
+       "programs": 60,
+       "programsSize": 574772,
+       "readbackBuffers": 0,
+       "readbackBuffersSize": 0,
+       "renderTargets": 3,
+       "storageAttributes": 0,
+       "storageAttributesSize": 0,
+       "textures": 31,
+       "texturesSize": 22043640,
+       "uniformBuffers": 454,
+       "uniformBuffersSize": 90480,
+       "total": 27042024
+      }
+     },
+     "score": 300,
+     "speed": 18
+    },
+    "city": {
+     "worst": [],
+     "frames": 27931,
+     "seconds": 20,
+     "fps": 1396.6,
+     "low1": 481.5,
+     "frame": {
+      "p50": 0.7,
+      "p95": 1,
+      "p99": 1.3,
+      "max": 17.6,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 0.6,
+      "p95": 0.8,
+      "p99": 0.9,
+      "max": 28.5
+     },
+     "gpu": {
+      "p50": 0.9,
+      "p95": 1.27
+     },
+     "calls": {
+      "p50": 195783,
+      "max": 237678
+     },
+     "triangles": 16707,
+     "heap": {
+      "startMB": 33.3,
+      "endMB": 38,
+      "gcEvents": 131,
+      "gcMaxFrameMs": 2.3,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "attributes": 721,
+       "attributesSize": 2781172,
+       "geometries": 328,
+       "indexAttributes": 138,
+       "indexAttributesSize": 163152,
+       "indirectStorageAttributes": 0,
+       "indirectStorageAttributesSize": 0,
+       "programs": 55,
+       "programsSize": 498140,
+       "readbackBuffers": 0,
+       "readbackBuffersSize": 0,
+       "renderTargets": 3,
+       "storageAttributes": 0,
+       "storageAttributesSize": 0,
+       "textures": 31,
+       "texturesSize": 21716042,
+       "uniformBuffers": 513,
+       "uniformBuffersSize": 116432,
+       "total": 25274938
+      },
+      "end": {
+       "attributes": 721,
+       "attributesSize": 2781172,
+       "geometries": 328,
+       "indexAttributes": 138,
+       "indexAttributesSize": 163152,
+       "indirectStorageAttributes": 0,
+       "indirectStorageAttributesSize": 0,
+       "programs": 55,
+       "programsSize": 498140,
+       "readbackBuffers": 0,
+       "readbackBuffersSize": 0,
+       "renderTargets": 3,
+       "storageAttributes": 0,
+       "storageAttributesSize": 0,
+       "textures": 31,
+       "texturesSize": 21716042,
+       "uniformBuffers": 539,
+       "uniformBuffersSize": 118688,
+       "total": 25277194
+      }
+     },
+     "score": 300,
+     "speed": 18
+    },
+    "jungle": {
+     "worst": [],
+     "frames": 27098,
+     "seconds": 20,
+     "fps": 1354.9,
+     "low1": 477.7,
+     "frame": {
+      "p50": 0.7,
+      "p95": 1.1,
+      "p99": 1.4,
+      "max": 17.5,
+      "over25": 0
+     },
+     "cpu": {
+      "p50": 0.6,
+      "p95": 0.8,
+      "p99": 0.9,
+      "max": 29.7
+     },
+     "gpu": {
+      "p50": 0.82,
+      "p95": 1.34
+     },
+     "calls": {
+      "p50": 293309,
+      "max": 333953
+     },
+     "triangles": 40635,
+     "heap": {
+      "startMB": 39.7,
+      "endMB": 45.2,
+      "gcEvents": 114,
+      "gcMaxFrameMs": 2.7,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "attributes": 702,
+       "attributesSize": 5916564,
+       "geometries": 322,
+       "indexAttributes": 119,
+       "indexAttributesSize": 127992,
+       "indirectStorageAttributes": 0,
+       "indirectStorageAttributesSize": 0,
+       "programs": 55,
+       "programsSize": 523171,
+       "readbackBuffers": 0,
+       "readbackBuffersSize": 0,
+       "renderTargets": 3,
+       "storageAttributes": 0,
+       "storageAttributesSize": 0,
+       "textures": 29,
+       "texturesSize": 20755087,
+       "uniformBuffers": 605,
+       "uniformBuffersSize": 124672,
+       "total": 27447486
+      },
+      "end": {
+       "attributes": 702,
+       "attributesSize": 5916564,
+       "geometries": 322,
+       "indexAttributes": 119,
+       "indexAttributesSize": 127992,
+       "indirectStorageAttributes": 0,
+       "indirectStorageAttributesSize": 0,
+       "programs": 55,
+       "programsSize": 523171,
+       "readbackBuffers": 0,
+       "readbackBuffersSize": 0,
+       "renderTargets": 3,
+       "storageAttributes": 0,
+       "storageAttributesSize": 0,
+       "textures": 29,
+       "texturesSize": 20755087,
+       "uniformBuffers": 622,
+       "uniformBuffersSize": 126368,
+       "total": 27449182
+      }
+     },
+     "score": 300,
+     "speed": 18
+    },
+    "frostpeak": {
+     "worst": [
+      {
+       "t": 0.03,
+       "ms": 34.2,
+       "cpu": 0.8
+      }
+     ],
+     "frames": 25529,
+     "seconds": 20,
+     "fps": 1276.4,
+     "low1": 406,
+     "frame": {
+      "p50": 0.7,
+      "p95": 1.2,
+      "p99": 1.5,
+      "max": 34.2,
+      "over25": 1
+     },
+     "cpu": {
+      "p50": 0.7,
+      "p95": 0.9,
+      "p99": 1,
+      "max": 42.2
+     },
+     "gpu": {
+      "p50": 0.93,
+      "p95": 1.63
+     },
+     "calls": {
+      "p50": 388975,
+      "max": 427267
+     },
+     "triangles": 26417,
+     "heap": {
+      "startMB": 41.2,
+      "endMB": 45.4,
+      "gcEvents": 100,
+      "gcMaxFrameMs": 3,
+      "gcOver5ms": 0
+     },
+     "memory": {
+      "start": {
+       "attributes": 572,
+       "attributesSize": 3977356,
+       "geometries": 265,
+       "indexAttributes": 70,
+       "indexAttributesSize": 121056,
+       "indirectStorageAttributes": 0,
+       "indirectStorageAttributesSize": 0,
+       "programs": 56,
+       "programsSize": 528259,
+       "readbackBuffers": 0,
+       "readbackBuffersSize": 0,
+       "renderTargets": 3,
+       "storageAttributes": 0,
+       "storageAttributesSize": 0,
+       "textures": 27,
+       "texturesSize": 20383809,
+       "uniformBuffers": 613,
+       "uniformBuffersSize": 115968,
+       "total": 25126448
+      },
+      "end": {
+       "attributes": 572,
+       "attributesSize": 3977356,
+       "geometries": 265,
+       "indexAttributes": 70,
+       "indexAttributesSize": 121056,
+       "indirectStorageAttributes": 0,
+       "indirectStorageAttributesSize": 0,
+       "programs": 56,
+       "programsSize": 528259,
+       "readbackBuffers": 0,
+       "readbackBuffersSize": 0,
+       "renderTargets": 3,
+       "storageAttributes": 0,
+       "storageAttributesSize": 0,
+       "textures": 27,
+       "texturesSize": 20383809,
+       "uniformBuffers": 627,
+       "uniformBuffersSize": 117328,
+       "total": 25127808
+      }
+     },
+     "score": 300,
+     "speed": 18
+    }
+   }
+  }
+ },
+ "hardware": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36"
+}

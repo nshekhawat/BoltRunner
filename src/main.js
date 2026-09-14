@@ -308,7 +308,7 @@ renderer.setAnimationLoop(now => {
   cpuMs = performance.now() - cpu0;
   const pc = perf.counters; pc.ticks = ticks; pc.obstacles = game.obstacles.active.length; pc.particles = fx.live; pc.pooled = game.obstacles.pooledCount; pc.tier = quality; perf.end();
 });
-window.bolt = { game, world, renderer, scene, camera, journey, perf, setQuality, switchBiome, get biome() { return biome; }, quality: () => quality, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
+window.bolt = { game, world, renderer, scene, camera, journey, perf, shared, setQuality, switchBiome, get biome() { return biome; }, quality: () => quality, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
 // ---- Benchmark mode: no gesture needed, scripted input, JSON report on bolt.bench.done ----
 let bench = null;
 if (BENCH) { audio.muted = true; game.ready = true; loading.classList.add('done'); game.setState('MENU'); removeEventListener('keydown', firstGesture, true); removeEventListener('pointerdown', firstGesture, true); bench = window.bolt.bench = new Bench(window.bolt, params); bench.start(); }

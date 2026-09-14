@@ -21,7 +21,7 @@ export class Bench {
   // Called once per simulation tick (or frame before M3). Scripted input: full jump when the nearest dangerous obstacle is half an airtime away.
   tick(dt) {
     const g = this.env.game, p = g.player; if (this.state === 'done') return;
-    if (this.state === 'countdown' && g.state === 'PLAYING') { this.state = 'run'; this.t = 0; if (window.gc) gc(); this.heap0 = performance.memory?.usedJSHeapSize ?? 0; this.env.perf.startRecording(); this.mem0 = { ...this.env.renderer.info.memory }; }
+    if (this.state === 'countdown' && g.state === 'PLAYING') { this.state = 'run'; this.t = 0; this.env.perf.startRecording(); if (window.gc) gc(); this.heap0 = performance.memory?.usedJSHeapSize ?? 0; this.mem0 = { ...this.env.renderer.info.memory }; }
     if (this.state !== 'run') return;
     this.t += dt; const speed = g.speed; let nearest = Infinity, mult = 1;
     for (const o of g.obstacles.active) { const d = o.userData.def; if (d.pickup) continue; const x = o.userData.x - d.halfW; if (x > -0.5 && x < nearest) { nearest = x; mult = d.speedMult ?? 1; } }

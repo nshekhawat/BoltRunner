@@ -1,5 +1,5 @@
 // Headless smoke test via Chrome DevTools Protocol. No deps (Node ≥22 has fetch + WebSocket).
-// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu] [--uncapped]
+// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu] [--uncapped] [--heap]
 import { spawn, execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
@@ -38,6 +38,7 @@ const swipeDown = async (x, y) => { await send('Input.dispatchTouchEvent', { typ
 await send('Page.navigate', { url: `http://localhost:${PORT}/?${query}` });
 // wait until the loading screen is ready for input (procedural generation can take a while under SwiftShader)
 for (let i = 0; i < 120; i++) { const r = await send('Runtime.evaluate', { expression: "document.getElementById('loading')?.classList.contains('ready')", returnByValue: true }); if (r?.result?.value) break; await sleep(250); }
+if (args.includes('--heap')) { await send('HeapProfiler.enable'); await send('HeapProfiler.collectGarbage'); await send('HeapProfiler.startSampling', { samplingInterval: 4096 }); } // --heap: live allocations by call site at the end (leak hunt)
 await sleep(secs * 1000 / 4);
 for (const key of (opt('keys') ?? '').split(',').filter(Boolean)) {
   const vk = key === 'Space' ? 32 : key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0;
@@ -63,6 +64,8 @@ if (args.includes('--touch')) {
 if (opt('js')) await send('Runtime.evaluate', { expression: opt('js') });
 await sleep(secs * 3000 / 4);
 if (opt('eval')) { const r = await send('Runtime.evaluate', { expression: opt('eval'), returnByValue: true, awaitPromise: true }); lines.push(`[eval] ${r?.exceptionDetails ? 'EXCEPTION ' + r.exceptionDetails.exception?.description : JSON.stringify(r?.result?.value)}`); }
+if (args.includes('--heap')) { await send('HeapProfiler.collectGarbage'); const { profile } = await send('HeapProfiler.stopSampling'); const by = new Map(); const walk = n => { const k = `${n.callFrame.functionName || '(anon)'} ${n.callFrame.url.split('/').slice(-2).join('/')}:${n.callFrame.lineNumber + 1}`; by.set(k, (by.get(k) ?? 0) + n.selfSize); n.children.forEach(walk); }; walk(profile.head);
+  lines.push('[heap] live allocations by call site (KB):'); for (const [k, v] of [...by].sort((a, b) => b[1] - a[1]).slice(0, 18)) lines.push(`[heap] ${(v / 1024).toFixed(0).padStart(7)}  ${k}`); }
 if (opt('shot')) { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(opt('shot'), Buffer.from(r.data, 'base64')); }
 console.log(lines.length ? lines.join('\n') : '(no console output)');
 chrome.kill(); srv.kill(); await sleep(500); execSync(`rm -rf ${PROFILE}`); process.exit(0);

@@ -16,12 +16,13 @@ const prim = {
 };
 
 // ctx handed to every biome factory. Textures made through ctx.tex are tracked so dispose() can free them.
+// tex.clone makes a real second texture, not texture.clone(): clones share one GL texture and skew renderer.info.memory.textures by one per clone on dispose.
 function makeCtx(shared, inst) {
   const track = t => { inst.textures.add(t); return t; };
   return {
     THREE, prim, shared, S: 256, viewDir: new THREE.Vector3(...C.CAMERA_LOOK).sub(new THREE.Vector3(...C.CAMERA_POS)).normalize(), // chase-camera view direction (face decor toward it)
     std: o => new THREE.MeshStandardMaterial(o), basic: o => new THREE.MeshBasicMaterial(o),
-    tex: { canvasTexture: (...a) => track(canvasTexture(...a)), heightToNormal: (...a) => track(heightToNormal(...a)), clone: t => { const c = t.clone(); c.needsUpdate = true; return track(c); }, makeNoiseTexture, fbm, smooth, clamp255, mix },
+    tex: { canvasTexture: (...a) => track(canvasTexture(...a)), heightToNormal: (...a) => track(heightToNormal(...a)), clone: t => { const c = new THREE.CanvasTexture(t.image); c.wrapS = t.wrapS; c.wrapT = t.wrapT; c.colorSpace = t.colorSpace; c.anisotropy = t.anisotropy; c.repeat.copy(t.repeat); return track(c); }, makeNoiseTexture, fbm, smooth, clamp255, mix },
     rnd: seed => () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }, // deterministic per-biome randomness
   };
 }

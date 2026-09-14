@@ -45,7 +45,7 @@ export class Perf {
     if (this.qOpen) { this.gl.endQuery(this.ext.TIME_ELAPSED_EXT); this.qOpen = false; this.pollGpu(); }
     const frame = this.lastFrame ? this.t0 - this.lastFrame : 16.7; this.lastFrame = this.t0;
     const i = this.head; this.frameMs[i] = frame; this.cpuMs[i] = cpu; this.gpuMs[i] = this.gpuLast; this.head = (i + 1) % N; this.count++;
-    const r = this.recording; if (r) { r.frame.push(frame); r.cpu.push(cpu); r.gpu.push(this.gpuLast); r.calls.push(this.renderer.info.render.calls); r.tris.push(this.renderer.info.render.triangles); if (performance.memory) r.heap.push(performance.memory.usedJSHeapSize); }
+    const r = this.recording; if (r && r.n < r.cap) { const k = r.n++; r.frame[k] = frame; r.cpu[k] = cpu; r.gpu[k] = this.gpuLast; r.calls[k] = this.renderer.info.render.calls; r.tris[k] = this.renderer.info.render.triangles; r.heap[k] = performance.memory ? performance.memory.usedJSHeapSize : 0; }
     this.acc += frame; this.frames++; if (this.acc >= 500) { this.fps = this.frames * 1000 / this.acc; this.acc = 0; this.frames = 0; if (!this.panel.hidden) this.draw(); if (!this.info.hidden) this.drawInfo(); }
   }
   pollGpu() {
@@ -67,22 +67,23 @@ export class Perf {
   }
   note(s) { this.log.push(`${(performance.now() / 1000).toFixed(1)}s ${s}`); if (this.log.length > 40) this.log.shift(); }
   // ---- Benchmark recording ------------------------------------------------------------------------------------------------
-  startRecording() { this.recording = { frame: [], cpu: [], gpu: [], calls: [], tris: [], heap: [] }; }
-  stopRecording() { const r = this.recording; this.recording = null; return r ? summarise(r) : null; }
+  // Preallocated typed arrays (allocated before the heap is sampled) so the recording itself never shows up as heap growth.
+  startRecording(cap = 120000) { const r = this.recording = { n: 0, cap, frame: new Float64Array(cap), cpu: new Float64Array(cap), gpu: new Float64Array(cap), calls: new Float64Array(cap), tris: new Float64Array(cap), heap: new Float64Array(cap) }; return r; }
+  stopRecording() { const r = this.recording; this.recording = null; if (!r) return null; for (const k of ['frame', 'cpu', 'gpu', 'calls', 'tris', 'heap']) r[k] = r[k].subarray(0, r.n); return summarise(r); }
 }
 
 // Percentiles, not averages. GC pauses are inferred from heap drops (a drop of ≥ 1 MB between two consecutive frames = a collection);
 // the frame that contained one is charged as the pause length.
 export function summarise(r) {
-  const f = r.frame, c = r.cpu, n = f.length; let gc = 0, gcMax = 0, gcOver5 = 0;
+  const f = r.frame, c = r.cpu, n = f.length; let gc = 0, gcMax = 0, gcOver5 = 0; const max = a => { let m = 0; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; };
   for (let i = 1; i < r.heap.length; i++) if (r.heap[i] < r.heap[i - 1] - 1e6) { gc++; gcMax = Math.max(gcMax, c[i]); if (c[i] > 5) gcOver5++; }
   const mean = a => a.reduce((x, y) => x + y, 0) / (a.length || 1);
   return {
     frames: n, seconds: +(f.reduce((a, b) => a + b, 0) / 1000).toFixed(1), fps: +(1000 / mean(f)).toFixed(1), low1: +lowFps(f).toFixed(1),
-    frame: { p50: +percentile(f, 50).toFixed(2), p95: +percentile(f, 95).toFixed(2), p99: +percentile(f, 99).toFixed(2), max: +Math.max(...f).toFixed(1), over25: f.filter(x => x > 25).length },
-    cpu: { p50: +percentile(c, 50).toFixed(2), p95: +percentile(c, 95).toFixed(2), p99: +percentile(c, 99).toFixed(2), max: +Math.max(...c).toFixed(1) },
+    frame: { p50: +percentile(f, 50).toFixed(2), p95: +percentile(f, 95).toFixed(2), p99: +percentile(f, 99).toFixed(2), max: +max(f).toFixed(1), over25: f.filter(x => x > 25).length },
+    cpu: { p50: +percentile(c, 50).toFixed(2), p95: +percentile(c, 95).toFixed(2), p99: +percentile(c, 99).toFixed(2), max: +max(c).toFixed(1) },
     gpu: r.gpu.some(x => x > 0) ? { p50: +percentile(r.gpu, 50).toFixed(2), p95: +percentile(r.gpu, 95).toFixed(2) } : null,
-    calls: { p50: percentile(r.calls, 50), max: Math.max(...r.calls) }, triangles: percentile(r.tris, 50),
-    heap: r.heap.length ? { startMB: +(r.heap[0] / 1048576).toFixed(1), endMB: +(r.heap[r.heap.length - 1] / 1048576).toFixed(1), gcEvents: gc, gcMaxFrameMs: +gcMax.toFixed(1), gcOver5ms: gcOver5 } : null,
+    calls: { p50: percentile(r.calls, 50), max: max(r.calls) }, triangles: percentile(r.tris, 50),
+    heap: r.heap.length && r.heap[0] ? { startMB: +(r.heap[0] / 1048576).toFixed(1), endMB: +(r.heap[r.heap.length - 1] / 1048576).toFixed(1), gcEvents: gc, gcMaxFrameMs: +gcMax.toFixed(1), gcOver5ms: gcOver5 } : null,
   };
 }

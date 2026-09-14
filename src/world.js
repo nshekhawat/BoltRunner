@@ -39,6 +39,11 @@ export class World {
     this.hemi = new THREE.HemisphereLight(0xbfdfff, 0xc9915a, 1.0);
     this.eyeLight = new THREE.PointLight(0x40e8ff, 0, 18, 1.5); this.eyeLight.position.set(0.3, 1.7, 0.5);
     scene.add(this.sun, this.sun.target, this.hemi, this.eyeLight);
+    // Shadow sentinel. three's shared depth material copies `map` from each caster but only refreshes its uniform when the caster HAS a map,
+    // so after a biome switch the first map-less caster re-uploads the previous biome's (already disposed) texture: one leaked GL texture
+    // per switch. A permanent, invisible caster with a permanent map, rendered first, keeps that uniform pointing at something alive.
+    this.sentinel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), new THREE.MeshStandardMaterial({ map: this.T.metalMap })); this.sentinel.castShadow = true; this.sentinel.position.set(0, -2, 0); this.sentinel.matrixAutoUpdate = false; this.sentinel.updateMatrix();
+    scene.add(this.sentinel); scene.children.unshift(scene.children.pop());
     this.skyU = { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, sunColor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, stars: { value: 0 }, aurora: { value: 0 }, time: { value: 0 }, uDesat: HC.desat };
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 16), new THREE.ShaderMaterial({ uniforms: this.skyU, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false }));
     scene.add(this.sky);

@@ -1,5 +1,5 @@
 // Headless smoke test via Chrome DevTools Protocol. No deps (Node ≥22 has fetch + WebSocket).
-// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu]
+// usage: node check.mjs [seconds] [query] [--shot=out.png] [--keys=Space,ArrowDown] [--js="run after keys"] [--eval="js, result printed, promises awaited"] [--size=W,H] [--mobile] [--touch] [--gpu] [--uncapped]
 import { spawn, execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 const args = process.argv.slice(2);
@@ -11,7 +11,7 @@ const srv = spawn('python3', ['-m', 'http.server', String(PORT)], { stdio: 'igno
 const PROFILE = `/tmp/boltchrome-${process.pid}`;
 const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
   '--headless=new', ...(args.includes('--gpu') ? [] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']), `--window-size=${opt('size') ?? '1280,720'}`, // --gpu: real GPU (frame-time checks)
-  '--no-first-run', `--user-data-dir=${PROFILE}`, `--remote-debugging-port=${DBG}`,
+  '--no-first-run', '--js-flags=--expose-gc', ...(args.includes('--uncapped') ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : []), `--user-data-dir=${PROFILE}`, `--remote-debugging-port=${DBG}`, // --uncapped: no vsync, frame time = real throughput
   '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let ws; for (let i = 0; i < 40 && !ws; i++) { await sleep(250); try { const t = await (await fetch(`http://localhost:${DBG}/json`)).json(); ws = t.find(x => x.type === 'page')?.webSocketDebuggerUrl; } catch {} }

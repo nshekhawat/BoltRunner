@@ -9,7 +9,7 @@ export class Particles {
     this.points = new THREE.Points(geo, new THREE.PointsMaterial({ map: dotTexture, size: 0.22, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.points.frustumCulled = false; scene.add(this.points);
     for (let i = 0; i < max; i++) this.pos[i * 3 + 1] = -100;
-    this._c = new THREE.Color(); this.budget = 1; // budget scales particle counts per quality tier
+    this._c = new THREE.Color(); this.budget = 1; this.live = 0; // budget scales particle counts per quality tier
   }
   // Emit n particles at (x,y,z). colors: array of hex. speed: max initial speed. gravity: u/s². life: s.
   emit(x, y, z, n, colors, speed, gravity, life = 0.8, spread = 1) {
@@ -24,15 +24,15 @@ export class Particles {
     }
   }
   update(dt, scroll) {
-    const p = this.pos, v = this.vel, c = this.col;
+    const p = this.pos, v = this.vel, c = this.col; let live = 0;
     for (let i = 0; i < this.max; i++) {
-      if (this.life[i] <= 0) continue;
+      if (this.life[i] <= 0) continue; live++;
       this.life[i] -= dt; if (this.life[i] <= 0) { p[i * 3 + 1] = -100; continue; }
       v[i * 3 + 1] += this.grav[i] * dt;
       p[i * 3] += (v[i * 3] - scroll) * dt; p[i * 3 + 1] += v[i * 3 + 1] * dt; p[i * 3 + 2] += v[i * 3 + 2] * dt;
       if (p[i * 3 + 1] < 0.02) { p[i * 3 + 1] = 0.02; v[i * 3 + 1] *= -0.3; }
       const f = Math.min(1, this.life[i] * 3); c[i * 3] *= f > 0.99 ? 1 : 0.94; c[i * 3 + 1] *= f > 0.99 ? 1 : 0.94; c[i * 3 + 2] *= f > 0.99 ? 1 : 0.94;
     }
-    this.points.geometry.attributes.position.needsUpdate = true; this.points.geometry.attributes.color.needsUpdate = true;
+    this.points.geometry.attributes.position.needsUpdate = true; this.points.geometry.attributes.color.needsUpdate = true; this.live = live;
   }
 }

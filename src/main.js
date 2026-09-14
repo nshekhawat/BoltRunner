@@ -1,4 +1,7 @@
+import { BENCH } from './seed.js'; // must come first: seeds Math.random in benchmark mode
 import * as THREE from 'three';
+import { Perf } from './perf.js';
+import { Bench } from './bench.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -34,6 +37,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 renderer.setPixelRatio(Math.min(devicePixelRatio, C.MAX_PIXEL_RATIO));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+const perf = new Perf(renderer);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(C.FOV_BASE, 1, 0.1, 400);
 
@@ -200,7 +204,7 @@ const settings = new Settings({
       case 'quality': if (initial) break; if (v === 'auto') autoTier(); else { autoQuality = false; setQuality(v); } break;
       case 'highContrast': HC.desat.value = v ? 0.6 : 0; HC.sat.value = v ? 0.6 : 0; document.body.classList.toggle('hc', v); bloom.threshold = v ? 3 : biome.def.lighting.bloomThreshold; break; // bloom off for scenery: only the pickup core exceeds 3
       case 'palette': setPalette(v); document.documentElement.style.setProperty('--heart', PALETTES[v].heart); document.documentElement.style.setProperty('--accent', PALETTES[v].accent); break;
-      case 'showFps': hud.el.fps.hidden = !v; break;
+      case 'showFps': perf.panel.hidden = !v; break;
       case 'cameraDistance': camDist = v; break;
       case 'mute': audio.setMuted(v); hud.muted(v); break;
       case 'music': case 'sfx': audio.setVolumes(S.s.music, S.s.sfx); break;
@@ -225,6 +229,7 @@ game.on('closeSettings', () => settings.hooks.close());
 game.on('break', () => { document.getElementById('break').hidden = false; audio.milestone(); });
 document.getElementById('breakbtn').onclick = () => { document.getElementById('break').hidden = true; game.onBreak = false; game.resume(); audio.uiClick(); };
 game.on('mute', () => settings.set('mute', !settings.s.mute)); // M key / speaker icon route through settings so it persists there
+game.on('perf', () => perf.toggle()).on('perfinfo', () => perf.toggleInfo());
 {
   const urlQ = params.get('q');
   if (urlQ && TIERS.includes(urlQ)) { autoQuality = false; setQuality(urlQ); }
@@ -271,10 +276,12 @@ addEventListener('keydown', firstGesture, true); addEventListener('pointerdown',
 
 let last = performance.now(), frames = 0, fpsT = 0, lowFpsT = 0, breathT = 0, bgT = 0, cpuMs = 0;
 renderer.setAnimationLoop(now => {
+  perf.begin(now);
   const raw = (now - last) / 1000, dt = Math.min(raw, C.MAX_DT); last = now; journey.frame(raw, cpuMs); const cpu0 = performance.now();
   const paused = game.state === 'PAUSED';
   const P = {}; let pt = performance.now(); const mark = k => { const n = performance.now(); P[k] = +(n - pt).toFixed(1); pt = n; }; P.t = journey.t; P.st = journey.state;
   if (!paused) {
+    if (bench) bench.tick(dt);
     game.update(dt * game.timeScale); mark('game'); // timeScale: tutorial beat / slow-mo. HUD timers inside use the same scaled clock (they are brief).
     const gdt = dt * game.timeScale;
     if (game.state === 'PLAYING') journey.update(gdt, game.score, game.speed, journeyHooks); mark('journey');
@@ -287,13 +294,17 @@ renderer.setAnimationLoop(now => {
   bubble.visible = game.bubble; if (bubble.visible) { bubble.position.set(0, game.player.y + 0.95, 0); bubble.rotation.y += dt; }
   if (game.rocket && !paused) fx.emit(-0.5, game.player.y + 0.3, 0.2, 3, [0xff9a3a, 0xffe27a, 0xffffff], 4, 2, 0.4, 0.3);
   if (world.phaseName === 'night' && game.state === 'PLAYING') game.sawNight = true;
-  frames++; fpsT += raw; if (fpsT >= 0.5) { const fps = frames / fpsT, mem = renderer.info.memory; hud.fps(`${Math.round(fps)} FPS · ${quality} · geo ${mem.geometries} tex ${mem.textures} · ${biome.def.id}/${world.phaseName}`); frames = 0; fpsT = 0;
+  frames++; fpsT += raw; if (fpsT >= 0.5) { const fps = frames / fpsT; frames = 0; fpsT = 0;
     // Auto-downgrade: sustained low FPS during play drops one tier (never while paused or on the first seconds after a switch).
     if (autoQuality && game.state === 'PLAYING' && fps < C.FPS_DOWNGRADE_BELOW) { lowFpsT += 0.5; if (lowFpsT >= C.FPS_DOWNGRADE_AFTER && quality !== 'low') { setQuality(TIERS[TIERS.indexOf(quality) + 1]); hud.message('Quality → ' + quality, 1.2); lowFpsT = -3; } } else lowFpsT = Math.max(0, lowFpsT);
   }
   mark('misc'); if (quality === 'low') renderer.render(scene, camera); else composer.render(); mark('render');
   bgT += raw; if (bgT > 1.5 && !paused) { bgT = 0; game.obstacles.measureBackground(renderer, camera); } game.obstacles.pollBackground(renderer); // pickup contrast plate follows the real background (async readback)
   cpuMs = performance.now() - cpu0; if (cpuMs > 12 && journey.active) (window.__slow ??= []).push({ ...P, cpu: +cpuMs.toFixed(1), score: game.score });
+  const pc = perf.counters; pc.obstacles = game.obstacles.active.length; pc.particles = fx.live; pc.pooled = game.obstacles.pooledCount; pc.tier = quality; perf.end();
 });
-window.bolt = { game, world, renderer, scene, camera, journey, setQuality, switchBiome, get biome() { return biome; }, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
+window.bolt = { game, world, renderer, scene, camera, journey, perf, setQuality, switchBiome, get biome() { return biome; }, quality: () => quality, contrastTest: o => contrastTest(window.bolt, o) }; // debug handle
+// ---- Benchmark mode: no gesture needed, scripted input, JSON report on bolt.bench.done ----
+let bench = null;
+if (BENCH) { audio.muted = true; game.ready = true; loading.classList.add('done'); game.setState('MENU'); removeEventListener('keydown', firstGesture, true); removeEventListener('pointerdown', firstGesture, true); bench = window.bolt.bench = new Bench(window.bolt, params); bench.start(); }
 console.log('three', THREE.REVISION);

@@ -1,0 +1,76 @@
+// Frame-time instrumentation. No dependencies: a ring buffer of frame / CPU / GPU times, percentile maths, an FPS panel (F) with a
+// rolling graph, and a debug overlay (F3) reading renderer.info plus our own counters. Zero allocation per frame once created.
+
+const N = 240; // samples kept for the live panel (4 s at 60 Hz)
+export const percentile = (arr, p) => { if (!arr.length) return 0; const s = Float64Array.from(arr).sort(); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; };
+// 1% low FPS: the mean of the slowest 1% of frames, expressed as FPS. This is the number that decides whether a game feels smooth.
+export const lowFps = (frameMs, pct = 1) => { if (!frameMs.length) return 0; const s = Float64Array.from(frameMs).sort(); const n = Math.max(1, Math.floor(s.length * pct / 100)); let sum = 0; for (let i = s.length - n; i < s.length; i++) sum += s[i]; return 1000 / (sum / n); };
+
+export class Perf {
+  constructor(renderer) {
+    this.renderer = renderer; renderer.info.autoReset = false; // we reset once per frame so the counts cover every pass of the post chain
+    this.frameMs = new Float32Array(N); this.cpuMs = new Float32Array(N); this.gpuMs = new Float32Array(N); this.head = 0; this.count = 0;
+    this.counters = { obstacles: 0, particles: 0, pooled: 0, ticks: 0, scale: 1, tier: '', note: '' }; this.log = [];
+    this.t0 = 0; this.cpu0 = 0; this.lastFrame = 0; this.recording = null;
+    // GPU timer (EXT_disjoint_timer_query_webgl2): measures the GPU side of a frame when the browser exposes it; silently absent otherwise.
+    const gl = this.gl = renderer.getContext(); this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2'); this.queries = []; this.gpuLast = 0;
+    // Panels
+    this.panel = document.createElement('div'); this.panel.id = 'perf'; this.panel.hidden = true; this.panel.innerHTML = '<div class="txt"></div><canvas width="240" height="48"></canvas>';
+    this.info = document.createElement('pre'); this.info.id = 'perfinfo'; this.info.hidden = true;
+    document.body.append(this.panel, this.info); this.txt = this.panel.querySelector('.txt'); this.gfx = this.panel.querySelector('canvas').getContext('2d');
+    this.lastTxt = ''; this.acc = 0; this.frames = 0; this.fps = 0;
+  }
+  toggle() { this.panel.hidden = !this.panel.hidden; }
+  toggleInfo() { this.info.hidden = !this.info.hidden; }
+  // Call at the top of the animation loop with the rAF timestamp.
+  begin(now) {
+    this.renderer.info.reset(); this.t0 = now; this.cpu0 = performance.now();
+    if (this.ext) { const q = this.gl.createQuery(); this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT, q); this.queries.push(q); this.qOpen = true; }
+  }
+  // Call once the frame's JS (simulation + render submission) is done.
+  end() {
+    const cpu = performance.now() - this.cpu0;
+    if (this.qOpen) { this.gl.endQuery(this.ext.TIME_ELAPSED_EXT); this.qOpen = false; this.pollGpu(); }
+    const frame = this.lastFrame ? this.t0 - this.lastFrame : 16.7; this.lastFrame = this.t0;
+    const i = this.head; this.frameMs[i] = frame; this.cpuMs[i] = cpu; this.gpuMs[i] = this.gpuLast; this.head = (i + 1) % N; this.count++;
+    const r = this.recording; if (r) { r.frame.push(frame); r.cpu.push(cpu); r.gpu.push(this.gpuLast); r.calls.push(this.renderer.info.render.calls); r.tris.push(this.renderer.info.render.triangles); if (performance.memory) r.heap.push(performance.memory.usedJSHeapSize); }
+    this.acc += frame; this.frames++; if (this.acc >= 500) { this.fps = this.frames * 1000 / this.acc; this.acc = 0; this.frames = 0; if (!this.panel.hidden) this.draw(); if (!this.info.hidden) this.drawInfo(); }
+  }
+  pollGpu() {
+    const gl = this.gl, ext = this.ext; while (this.queries.length) { const q = this.queries[0]; if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break; if (!gl.getParameter(ext.GPU_DISJOINT_EXT)) this.gpuLast = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6; gl.deleteQuery(q); this.queries.shift(); }
+    if (this.queries.length > 8) { gl.deleteQuery(this.queries.shift()); } // never let stalled queries pile up
+  }
+  // Rolling stats over the last N frames (for the adaptive controllers and the panel).
+  window() { const n = Math.min(N, this.count), f = n < N ? this.frameMs.subarray(0, n) : this.frameMs, c = n < N ? this.cpuMs.subarray(0, n) : this.cpuMs; return { frameP95: percentile(f, 95), frameP50: percentile(f, 50), cpuP95: percentile(c, 95), n }; }
+  draw() {
+    const w = this.window(), ms = w.frameP50, s = `${this.fps.toFixed(0)} FPS  ${ms.toFixed(1)} ms  p95 ${w.frameP95.toFixed(1)}  cpu ${w.cpuP95.toFixed(1)}${this.ext ? `  gpu ${this.gpuLast.toFixed(1)}` : ''}  ×${this.counters.scale.toFixed(2)}`;
+    if (s !== this.lastTxt) { this.txt.textContent = s; this.lastTxt = s; }
+    const g = this.gfx; g.clearRect(0, 0, 240, 48); g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, 0, 240, 48);
+    g.fillStyle = '#4c9'; for (let k = 0; k < N; k++) { const v = this.frameMs[(this.head + k) % N], h = Math.min(48, v * 1.2); g.fillStyle = v > 25 ? '#e44' : v > 17.5 ? '#ec4' : '#4c9'; g.fillRect(k, 48 - h, 1, h); }
+    g.fillStyle = 'rgba(255,255,255,0.4)'; g.fillRect(0, 48 - 16.7 * 1.2, 240, 1);
+  }
+  drawInfo() {
+    const I = this.renderer.info, c = this.counters, gl = this.gl;
+    this.info.textContent = `draw calls  ${I.render.calls}\ntriangles   ${I.render.triangles}\npoints      ${I.render.points}\ngeometries  ${I.memory.geometries}\ntextures    ${I.memory.textures}\nprograms    ${I.programs?.length ?? 0}\nobstacles   ${c.obstacles}\nparticles   ${c.particles}\npooled      ${c.pooled}\nticks/frame ${c.ticks}\nrender scale ${c.scale.toFixed(2)}  tier ${c.tier}\nbuffer      ${gl.drawingBufferWidth}×${gl.drawingBufferHeight}\n${c.note}\n${this.log.slice(-6).join('\n')}`;
+  }
+  note(s) { this.log.push(`${(performance.now() / 1000).toFixed(1)}s ${s}`); if (this.log.length > 40) this.log.shift(); }
+  // ---- Benchmark recording ------------------------------------------------------------------------------------------------
+  startRecording() { this.recording = { frame: [], cpu: [], gpu: [], calls: [], tris: [], heap: [] }; }
+  stopRecording() { const r = this.recording; this.recording = null; return r ? summarise(r) : null; }
+}
+
+// Percentiles, not averages. GC pauses are inferred from heap drops (a drop of ≥ 1 MB between two consecutive frames = a collection);
+// the frame that contained one is charged as the pause length.
+export function summarise(r) {
+  const f = r.frame, c = r.cpu, n = f.length; let gc = 0, gcMax = 0, gcOver5 = 0;
+  for (let i = 1; i < r.heap.length; i++) if (r.heap[i] < r.heap[i - 1] - 1e6) { gc++; gcMax = Math.max(gcMax, c[i]); if (c[i] > 5) gcOver5++; }
+  const mean = a => a.reduce((x, y) => x + y, 0) / (a.length || 1);
+  return {
+    frames: n, seconds: +(f.reduce((a, b) => a + b, 0) / 1000).toFixed(1), fps: +(1000 / mean(f)).toFixed(1), low1: +lowFps(f).toFixed(1),
+    frame: { p50: +percentile(f, 50).toFixed(2), p95: +percentile(f, 95).toFixed(2), p99: +percentile(f, 99).toFixed(2), max: +Math.max(...f).toFixed(1), over25: f.filter(x => x > 25).length },
+    cpu: { p50: +percentile(c, 50).toFixed(2), p95: +percentile(c, 95).toFixed(2), p99: +percentile(c, 99).toFixed(2), max: +Math.max(...c).toFixed(1) },
+    gpu: r.gpu.some(x => x > 0) ? { p50: +percentile(r.gpu, 50).toFixed(2), p95: +percentile(r.gpu, 95).toFixed(2) } : null,
+    calls: { p50: percentile(r.calls, 50), max: Math.max(...r.calls) }, triangles: percentile(r.tris, 50),
+    heap: r.heap.length ? { startMB: +(r.heap[0] / 1048576).toFixed(1), endMB: +(r.heap[r.heap.length - 1] / 1048576).toFixed(1), gcEvents: gc, gcMaxFrameMs: +gcMax.toFixed(1), gcOver5ms: gcOver5 } : null,
+  };
+}

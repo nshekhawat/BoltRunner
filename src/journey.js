@@ -24,7 +24,7 @@ export class Journey {
     this.gate = new THREE.Group(); this.gate.add(tube, streaks, floor, ...this.rings); this.gate.position.set(0, 4, 2); this.gate.visible = false; this.tube = tube; this.floor = floor;
     scene.add(this.gate);
   }
-  begin(startId) { this.active = true; this.idx = BIOME_IDS.indexOf(startId); this.nextAt = C.DAY_CYCLE_POINTS; this.pending = null; this.state = 'run'; this.frameMax = 0; this.overruns = 0; }
+  begin(startId) { this.active = true; this.transitionsDone = 0; this.idx = BIOME_IDS.indexOf(startId); this.nextAt = C.DAY_CYCLE_POINTS; this.pending = null; this.state = 'run'; this.frameMax = 0; this.overruns = 0; }
   end(hooks) { this.active = false; this.gate.visible = false; if (this.state !== 'run' && this.state !== 'idle') hooks?.hold(false); this.state = 'idle'; if (this.pending?.inst) hooks?.discard(this.pending); this.pending = null; }
   get nextId() { return BIOME_IDS[(this.idx + 1) % BIOME_IDS.length]; }
 
@@ -46,7 +46,7 @@ export class Journey {
       const inside = THREE.MathUtils.clamp((camX - entrance) / this.len, 0, 1);
       this.tube.material.color.lerpColors(this.colorA, this.colorB, inside).multiplyScalar(0.5 + 0.5 * Math.sin(inside * Math.PI)); // brightest mid-tunnel
       this.rings[0].material.color.copy(this.tube.material.color);
-      if (!this.swapped && inside >= 0.45 && this.pending && !this.pending.building) { const t0 = performance.now(); hooks.swap(this.pending); this.swapMs = +(performance.now() - t0).toFixed(1); this.pending = null; this.swapped = true; this.idx = (this.idx + 1) % BIOME_IDS.length; this.nextAt += C.DAY_CYCLE_POINTS; }
+      if (!this.swapped && inside >= 0.45 && this.pending && !this.pending.building) { const t0 = performance.now(); hooks.swap(this.pending); this.swapMs = +(performance.now() - t0).toFixed(1); this.pending = null; this.swapped = true; this.transitionsDone = (this.transitionsDone ?? 0) + 1; this.idx = (this.idx + 1) % BIOME_IDS.length; this.nextAt += C.DAY_CYCLE_POINTS; }
       if (exit < C.ROBOT_X - 2) { this.gate.visible = false; this.state = 'run'; hooks.hold(false, exit); if (!this.swapped) this.nextAt = score + 200; } // build was too slow: try again shortly
     }
   }

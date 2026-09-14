@@ -163,6 +163,7 @@ export class Obstacles {
     this.active.length = 0; this.spawner.reset(); this.powerActive = false;
   }
   setDifficulty(mode) { this.hitboxScale = C.HITBOX_SCALE[mode]; }
+  get pooledCount() { let n = 0; for (const k in this.pools) n += this.pools[k].length; return n; }
 
   spawn(type) {
     const g = this.pools[type].pop(); if (!g) return null;

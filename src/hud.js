@@ -1,6 +1,6 @@
 // DOM HUD + overlays. Everything here is display only; game state lives in game.js.
 const $ = id => document.getElementById(id);
-const el = { power: $('powerring'), powerIcon: $('powericon'), powerArc: $('powerarc'), stats: $('stats'), statsBody: $('statsbody'), score: $('scorenum'), scoreBox: $('score'), combo: $('combo'), timer: $('timer'), shields: $('shields'), msg: $('message'), hud: $('hud'), fps: $('fps'),
+const el = { power: $('powerring'), powerIcon: $('powericon'), powerArc: $('powerarc'), stats: $('stats'), statsBody: $('statsbody'), score: $('scorenum'), scoreBox: $('score'), combo: $('combo'), timer: $('timer'), shields: $('shields'), msg: $('message'), hud: $('hud'),
   menu: $('menu'), pause: $('pause'), end: $('end'), mode: $('modebtn'), quality: $('qualitybtn'), best: $('bestscore'), bestTime: $('besttime'), mute: $('mutebtn'),
   encourage: $('encourage'), newbest: $('newbest'), eScore: $('e-score'), eTime: $('e-time'), eCleared: $('e-cleared'), eBestS: $('e-bests'), eBestT: $('e-bestt'), again: $('againbtn'), menuBtn: $('menubtn') };
 // One fixed heart shape and colour in every biome, white outline so it never vanishes against the sky.
@@ -19,8 +19,6 @@ export const hud = {
   combo(n) { if (n !== lastCombo) { el.combo.textContent = n >= 2 ? `×${n} combo` : ''; lastCombo = n; } },
   shields(n, max) { if (n === lastShields) return; lastShields = n; el.shields.innerHTML = Array.from({ length: max }, (_, i) => `<span class="${i < n ? '' : 'lost'}">${HEART}</span>`).join(''); },
   message(text, secs = 1, bounce = false, small = false) { el.msg.textContent = text; el.msg.classList.toggle('bounce', bounce); el.msg.classList.toggle('small', small); msgTimer = secs; },
-  fps(text) { el.fps.textContent = text; },
-  toggleFps() { el.fps.hidden = !el.fps.hidden; },
   biome(def) { document.title = `Bolt Runner · ${def.displayName}`; },
   power(kind, frac = 0) { el.power.hidden = !kind; if (!kind) return; el.powerIcon.textContent = { shield: '🛡️', slowmo: '⏳', rocket: '🚀' }[kind]; el.powerArc.style.strokeDashoffset = String(157 * (1 - frac)); },
   // Stats + sticker book. L = store.lifetime, R = store.records, stickers = earned list, all = full sticker list.

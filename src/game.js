@@ -60,7 +60,8 @@ export class Game {
       if (this.state === 'SELECT' && this.select?.key(e.code)) { e.preventDefault(); return; }
       if (JUMP.has(e.code)) { e.preventDefault(); if (!e.repeat) this.jumpPressed(); }
       else if (e.code === 'KeyP' || e.code === 'Escape') this.state === 'PAUSED' ? this.resume() : this.pause();
-      else if (e.code === 'KeyF') hud.toggleFps();
+      else if (e.code === 'KeyF') this.emit('perf');
+      else if (e.code === 'F3') { e.preventDefault(); this.emit('perfinfo'); }
       else if (e.code === 'KeyM') this.emit('mute');
       else if (e.code === 'KeyD' && this.state === 'MENU') { this.setMode(this.mode === 'kid' ? 'normal' : this.mode === 'normal' ? 'nofail' : 'kid'); this.emit('modeChanged', this.mode); }
       else if (e.code === 'KeyH') { C.DEBUG_HITBOXES = !C.DEBUG_HITBOXES; }

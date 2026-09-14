@@ -18,7 +18,10 @@ freezes each one on the same frame.
 v2 adds four selectable worlds (desert canyon, neon city, temple jungle, frost peak), a
 Journey mode that runs through all of them, a health pickup that is recognisable in every
 world, a full settings screen, and progression (records, cosmetics, ghost, power-ups,
-sticker book, photo mode). No ads, purchases, accounts, analytics or network calls.
+sticker book, photo mode). No ads, purchases or accounts, and nothing about a player is stored
+anywhere but their own browser. The only network requests are three.js at load and, on the
+deployed site only, an anonymous page-view beacon (see Deploying); serve the files yourself and
+even that is absent.
 
 ## Run it
 
@@ -55,6 +58,22 @@ Two things about that setup are deliberate:
 
 A Worker (`src/noise-worker.js`) is loaded through `new URL(..., import.meta.url)`, so the site
 must be served from the root of its domain, as it is here.
+
+### Analytics
+
+The deployed site counts page views with Vercel Web Analytics: no cookies, no `localStorage`, no
+cross-site identifier, nothing that follows a visitor anywhere else. `index.html` appends
+`/_vercel/insights/script.js`, which is a path Vercel serves from the deployment itself.
+
+That is deliberately *not* `npm i @vercel/analytics`. The package exists to be bundled — it reads
+`process.env.NODE_ENV` — and installing it would give this project its first `node_modules` and its
+first build step, which is the one thing the whole codebase is arranged to avoid. What the package's
+`inject()` does at runtime is append exactly that script tag, so the tag is the same feature without
+the toolchain.
+
+The tag is skipped on `localhost`, where the path does not exist: it would 404 into the console on
+every local run and into `check.mjs`'s error report, where a real 404 needs to stand out. Turning
+analytics off is deleting the script block at the foot of `index.html`.
 
 ## Controls
 

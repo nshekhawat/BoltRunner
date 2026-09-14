@@ -74,5 +74,15 @@
   </div>
 </div>
 <script type="module" src="src/main.js"></script>
+<!-- Vercel Web Analytics: page views only, no cookies, no cross-site tracking. This is precisely what
+     @vercel/analytics' inject() does at runtime — append <script defer src="/_vercel/insights/script.js">
+     — and the package itself is written for a bundler (it reads process.env.NODE_ENV), which this
+     project does not have. The path exists only on a Vercel deployment, so it is skipped on localhost,
+     where it would 404 into the console and into check.mjs's error report. -->
+<script>
+  if (location.protocol.startsWith('http') && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    const s = document.createElement('script'); s.defer = true; s.src = '/_vercel/insights/script.js'; document.head.appendChild(s);
+  }
+</script>
 </body>
 </html>
